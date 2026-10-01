@@ -2,6 +2,7 @@ package com.jarvis.app
 
 import android.app.Notification
 import android.app.RemoteInput
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -22,12 +23,18 @@ data class CapturedMessage(
 class JarvisNotificationListener : NotificationListenerService() {
 
     companion object {
+        private var instance: JarvisNotificationListener? = null
         private val idCounter = AtomicInteger(1)
         private val messageList = mutableListOf<CapturedMessage>()
         private val messageMap = ConcurrentHashMap<Int, CapturedMessage>()
         private const val MAX_MESSAGES = 40
 
-        fun getRecentMessages(limit: Int): List<CapturedMessage> {
+        fun isConnected(): Boolean = instance != null
+
+        fun getRecentMessages(context: Context, limit: Int): List<CapturedMessage> {
+            // Actively harvest existing notifications from the shade if connected
+            instance?.harvestActiveNotifications()
+
             synchronized(messageList) {
                 return messageList.take(limit.coerceIn(1, MAX_MESSAGES)).toList()
             }
@@ -57,43 +64,84 @@ class JarvisNotificationListener : NotificationListenerService() {
                 false
             }
         }
+
+        fun requestRebindIfDead(context: Context) {
+            try {
+                requestRebind(ComponentName(context, JarvisNotificationListener::class.java))
+            } catch (_: Exception) {}
+        }
     }
 
     private lateinit var prefsManager: PreferencesManager
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         prefsManager = PreferencesManager(applicationContext)
+    }
+
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        instance = this
+        harvestActiveNotifications()
+    }
+
+    override fun onListenerDisconnected() {
+        super.onListenerDisconnected()
+        instance = null
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        instance = null
+    }
+
+    fun harvestActiveNotifications() {
+        try {
+            val active = activeNotifications ?: return
+            for (sbn in active) {
+                processNotification(sbn)
+            }
+        } catch (_: Exception) {}
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         if (sbn == null) return
-        val pkg = sbn.packageName
+        processNotification(sbn)
+    }
 
-        // Filter against allowlist
+    private fun processNotification(sbn: StatusBarNotification) {
+        val pkg = sbn.packageName
         val allowed = prefsManager.getAllowedPackages()
         if (!allowed.contains(pkg)) return
 
         val notification = sbn.notification ?: return
         val extras = notification.extras ?: return
 
-        // Extract title/sender and text
-        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: "Unknown"
-        var content = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: ""
+        // 1. Extract title/sender
+        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
+            ?: extras.getCharSequence(Notification.EXTRA_TITLE_BIG)?.toString()
+            ?: "Unknown"
 
-        // Handle messaging style if available
-        val messages = extras.getParcelableArray(Notification.EXTRA_MESSAGES)
-        if (!messages.isNullOrEmpty()) {
-            val lastMsgBundle = messages.last() as? Bundle
-            val body = lastMsgBundle?.getCharSequence("text")?.toString()
-            if (!body.isNullOrBlank()) {
-                content = body
-            }
+        // 2. Extract content (covers standard text, big text, WhatsApp message lines)
+        var content = ""
+
+        val textLines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)
+        if (!textLines.isNullOrEmpty()) {
+            content = textLines.lastOrNull()?.toString() ?: ""
+        }
+
+        if (content.isBlank()) {
+            content = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString() ?: ""
+        }
+
+        if (content.isBlank()) {
+            content = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: ""
         }
 
         if (content.isBlank()) return
 
-        // Search for inline reply action
+        // 3. Search for inline reply action
         var inlineAction: Notification.Action? = null
         val actions = notification.actions
         if (actions != null) {
@@ -111,18 +159,25 @@ class JarvisNotificationListener : NotificationListenerService() {
             }
         }
 
-        val captured = CapturedMessage(
-            id = idCounter.getAndIncrement(),
-            packageName = pkg,
-            sender = title,
-            text = content,
-            timestamp = sbn.postTime,
-            replyAction = inlineAction
-        )
-
+        // Avoid adding duplicate entries for same package + sender + text within close timeframe
         synchronized(messageList) {
+            val isDuplicate = messageList.any { 
+                it.packageName == pkg && it.sender == title && it.text == content && (sbn.postTime - it.timestamp < 3000)
+            }
+            if (isDuplicate) return
+
+            val captured = CapturedMessage(
+                id = idCounter.getAndIncrement(),
+                packageName = pkg,
+                sender = title,
+                text = content,
+                timestamp = sbn.postTime,
+                replyAction = inlineAction
+            )
+
             messageList.add(0, captured)
             messageMap[captured.id] = captured
+
             if (messageList.size > MAX_MESSAGES) {
                 val removed = messageList.removeAt(messageList.size - 1)
                 messageMap.remove(removed.id)
