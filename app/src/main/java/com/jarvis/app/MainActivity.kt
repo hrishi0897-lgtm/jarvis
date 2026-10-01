@@ -44,7 +44,7 @@ class MainActivity : ComponentActivity() {
     private var confirmContinuation: ((Boolean) -> Unit)? = null
     private var showConfirmationState by mutableStateOf<String?>(null)
 
-    override fun onCreate(savedInstanceState: Bundle?) {
+        override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         prefsManager = PreferencesManager(applicationContext)
@@ -69,7 +69,8 @@ class MainActivity : ComponentActivity() {
         tools = Tools(
             context = applicationContext,
             prefsManager = prefsManager,
-            termuxBridge = termuxBridge
+            termuxBridge = termuxBridge,
+            confirmCallback = confirmHandler
         )
 
         agent = Agent(geminiClient, tools)
@@ -77,7 +78,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             JarvisMainScreen()
         }
-    }
+        }
+        
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
