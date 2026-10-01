@@ -65,7 +65,7 @@ class VoiceActivity : ComponentActivity(), RecognitionListener, TextToSpeech.OnI
     private var voiceState by mutableStateOf(VoiceState.IDLE)
     private var userCaption by mutableStateOf("")
     private var jarvisCaption by mutableStateOf("Jarvis is listening...")
-    private var micLevel by mutableFloatOf(0f)
+    private var micLevel by mutableFloatStateOf(0f)
     private var isMuted by mutableStateOf(false)
 
     private var consecutiveSilenceCount = 0
@@ -120,7 +120,7 @@ class VoiceActivity : ComponentActivity(), RecognitionListener, TextToSpeech.OnI
         }
     }
 
-    override fun onNewIntent(intent: Intent?) {
+    override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         stopSpeaking()
@@ -376,12 +376,9 @@ class VoiceActivity : ComponentActivity(), RecognitionListener, TextToSpeech.OnI
                     ) {
                         Canvas(modifier = Modifier.fillMaxSize()) {
                             val center = Offset(size.width / 2f, size.height / 2f)
-                            val baseRadius: Float = size.minDimension / 2.6f
-                            val dynamicRadius: Float = if (voiceState == VoiceState.LISTENING) {
-                                baseRadius * (1f + micLevel * 0.4f)
-                            } else {
-                                baseRadius * pulseScale
-                            }
+                            val baseRadius = size.minDimension / 2.6f
+                            val factor = if (voiceState == VoiceState.LISTENING) (1f + micLevel * 0.4f) else pulseScale
+                            val dynamicRadius = baseRadius * factor
 
                             drawCircle(
                                 brush = Brush.radialGradient(
