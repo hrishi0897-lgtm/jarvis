@@ -12,7 +12,8 @@ import org.json.JSONObject
 class Tools(
     private val context: Context,
     private val prefsManager: PreferencesManager,
-    private val termuxBridge: TermuxBridge
+    private val termuxBridge: TermuxBridge,
+    private val confirmCallback: suspend (String) -> Boolean
 ) {
 
     fun getToolDeclarations(): JSONArray {
@@ -81,6 +82,42 @@ class Tools(
             })
         }
 
+        val listMessages = JSONObject().apply {
+            put("name", "list_recent_messages")
+            put("description", "Retrieves recent incoming notifications/messages from allowed applications.")
+            put("parameters", JSONObject().apply {
+                put("type", "object")
+                put("properties", JSONObject().apply {
+                    put("limit", JSONObject().apply {
+                        put("type", "integer")
+                        put("description", "Max count of messages to fetch (default 10, max 40).")
+                    })
+                })
+            })
+        }
+
+        val replyMessage = JSONObject().apply {
+            put("name", "reply_to_message")
+            put("description", "Sends an inline reply to a specific message using its unique message ID.")
+            put("parameters", JSONObject().apply {
+                put("type", "object")
+                put("properties", JSONObject().apply {
+                    put("id", JSONObject().apply {
+                        put("type", "integer")
+                        put("description", "The integer ID of the target message.")
+                    })
+                    put("text", JSONObject().apply {
+                        put("type", "string")
+                        put("description", "The reply body to send.")
+                    })
+                })
+                put("required", JSONArray().apply {
+                    put("id")
+                    put("text")
+                })
+            })
+        }
+
         return JSONArray().apply {
             put(JSONObject().apply {
                 put("function_declarations", JSONArray().apply {
@@ -88,6 +125,8 @@ class Tools(
                     put(openApp)
                     put(setAlarm)
                     put(termuxRun)
+                    put(listMessages)
+                    put(replyMessage)
                 })
             })
         }
@@ -170,6 +209,55 @@ class Tools(
                     result.put("stdout", execResult.stdout)
                     result.put("stderr", execResult.stderr)
                     result.put("exit_code", execResult.exitCode)
+                }
+
+                "list_recent_messages" -> {
+                    val limit = args.optInt("limit", 10)
+                    val messages = JarvisNotificationListener.getRecentMessages(limit)
+                    val array = JSONArray()
+                    for (msg in messages) {
+                        array.put(JSONObject().apply {
+                            put("id", msg.id)
+                            put("package_name", msg.packageName)
+                            put("sender", msg.sender)
+                            put("text", msg.text)
+                            put("timestamp", msg.timestamp)
+                            put("can_reply", msg.replyAction != null)
+                        })
+                    }
+                    result.put("status", "success")
+                    result.put("messages", array)
+                }
+
+                "reply_to_message" -> {
+                    val id = args.getInt("id")
+                    val replyText = args.getString("text")
+                    val message = JarvisNotificationListener.getMessageById(id)
+
+                    if (message == null) {
+                        result.put("status", "error")
+                        result.put("message", "Message with ID $id not found.")
+                    } else if (message.replyAction == null) {
+                        result.put("status", "error")
+                        result.put("message", "Message with ID $id does not support direct replies.")
+                    } else {
+                        val confirmationMessage = "Send reply to ${message.sender} (${message.packageName}):\n\n\"$replyText\""
+                        val approved = confirmCallback(confirmationMessage)
+
+                        if (!approved) {
+                            result.put("status", "error")
+                            result.put("message", "Reply canceled by user.")
+                        } else {
+                            val success = JarvisNotificationListener.sendReply(context, id, replyText)
+                            if (success) {
+                                result.put("status", "success")
+                                result.put("message", "Reply sent successfully.")
+                            } else {
+                                result.put("status", "error")
+                                result.put("message", "Failed to dispatch reply intent.")
+                            }
+                        }
+                    }
                 }
 
                 else -> {
