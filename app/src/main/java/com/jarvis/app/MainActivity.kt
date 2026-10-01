@@ -1,39 +1,309 @@
 package com.jarvis.app
 
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCancellableCoroutine
+
+data class ChatMessage(val sender: String, val text: String)
+
+data class InstalledAppItem(
+    val packageName: String,
+    val appName: String,
+    var isAllowed: Boolean
+)
 
 class MainActivity : ComponentActivity() {
+
+    private lateinit var prefsManager: PreferencesManager
+    private lateinit var geminiClient: GeminiClient
+    private lateinit var tools: Tools
+    private lateinit var agent: Agent
+
+    private val conversationHistory = mutableListOf<JSONObject>()
+    private var confirmContinuation: ((Boolean) -> Unit)? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        prefsManager = PreferencesManager(applicationContext)
+        geminiClient = GeminiClient { prefsManager.getApiKey() }
+
+        tools = Tools(
+            context = applicationContext,
+            prefsManager = prefsManager,
+            confirmCallback = { details ->
+                suspendCancellableCoroutine { continuation ->
+                    confirmContinuation = { continuation.resume(it) }
+                    showConfirmationState = details
+                }
+            }
+        )
+
+        agent = Agent(geminiClient, tools)
+
         setContent {
-            MaterialTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    Greeting(name = "Jarvis")
+            JarvisMainScreen()
+        }
+    }
+
+    private var showConfirmationState by mutableStateOf<String?>(null)
+
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Composable
+    fun JarvisMainScreen() {
+        var selectedTab by remember { mutableIntStateOf(0) }
+        val tabs = listOf("Chat", "Apps", "Settings")
+
+        MaterialTheme {
+            Scaffold(
+                bottomBar = {
+                    NavigationBar {
+                        tabs.forEachIndexed { index, title ->
+                            NavigationBarItem(
+                                selected = selectedTab == index,
+                                onClick = { selectedTab = index },
+                                label = { Text(title) },
+                                icon = { }
+                            )
+                        }
+                    }
+                }
+            ) { innerPadding ->
+                Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+                    when (selectedTab) {
+                        0 -> ChatTabScreen()
+                        1 -> AppsTabScreen()
+                        2 -> SettingsTabScreen()
+                    }
+
+                    showConfirmationState?.let { details ->
+                        AlertDialog(
+                            onDismissRequest = {
+                                confirmContinuation?.invoke(false)
+                                showConfirmationState = null
+                            },
+                            title = { Text("Confirm Action") },
+                            text = { Text(details) },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    confirmContinuation?.invoke(true)
+                                    showConfirmationState = null
+                                }) {
+                                    Text("Allow")
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = {
+                                    confirmContinuation?.invoke(false)
+                                    showConfirmationState = null
+                                }) {
+                                    Text("Deny")
+                                }
+                            }
+                        )
+                    }
                 }
             }
         }
     }
-}
 
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(text = "Hello, $name is online.")
+    @Composable
+    fun ChatTabScreen() {
+        val messages = remember { mutableStateListOf<ChatMessage>() }
+        var inputText by remember { mutableStateOf("") }
+        var isBusy by remember { mutableStateOf(false) }
+        val coroutineScope = rememberCoroutineScope()
+
+        Column(modifier = Modifier.fillMaxSize().padding(12.dp)) {
+            LazyColumn(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                reverseLayout = true
+            ) {
+                items(messages.reversed()) { msg ->
+                    val isUser = msg.sender == "Me"
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+                        ) {
+                            Text(
+                                text = msg.text,
+                                modifier = Modifier.padding(10.dp),
+                                color = if (isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (isBusy) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = inputText,
+                    onValueChange = { inputText = it },
+                    placeholder = { Text("Ask Jarvis...") },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    enabled = !isBusy
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Button(
+                    onClick = {
+                        val text = inputText.trim()
+                        if (text.isNotEmpty() && !isBusy) {
+                            inputText = ""
+                            messages.add(ChatMessage("Me", text))
+                            isBusy = true
+
+                            coroutineScope.launch {
+                                try {
+                                    val reply = agent.runTurn(
+                                        conversationHistory = conversationHistory,
+                                        userMessage = text,
+                                        onUpdate = { status ->
+                                            // Optional progress tracking
+                                        }
+                                    )
+                                    messages.add(ChatMessage("Jarvis", reply))
+                                } catch (e: Exception) {
+                                    messages.add(ChatMessage("Jarvis", "Error: ${e.message}"))
+                                } finally {
+                                    isBusy = false
+                                }
+                            }
+                        }
+                    },
+                    enabled = !isBusy && inputText.isNotBlank()
+                ) {
+                    Text("Send")
+                }
+            }
+        }
+    }
+
+    @Composable
+    fun AppsTabScreen() {
+        var installedApps by remember { mutableStateOf<List<InstalledAppItem>>(emptyList()) }
+        var isLoading by remember { mutableStateOf(true) }
+
+        LaunchedEffect(Unit) {
+            withContext(Dispatchers.IO) {
+                val pm = packageManager
+                val intent = Intent(Intent.ACTION_MAIN, null).apply {
+                    addCategory(Intent.CATEGORY_LAUNCHER)
+                }
+                val activities = pm.queryIntentActivities(intent, 0)
+                val allowedSet = prefsManager.getAllowedPackages()
+
+                val list = activities.mapNotNull { resolveInfo ->
+                    val pkg = resolveInfo.activityInfo.packageName
+                    if (pkg == packageName) return@mapNotNull null
+                    val name = resolveInfo.loadLabel(pm).toString()
+                    InstalledAppItem(pkg, name, allowedSet.contains(pkg))
+                }.sortedBy { it.appName }
+
+                installedApps = list
+                isLoading = false
+            }
+        }
+
+        if (isLoading) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        } else {
+            LazyColumn(modifier = Modifier.fillMaxSize().padding(12.dp)) {
+                items(installedApps, key = { it.packageName }) { appItem ->
+                    var isChecked by remember { mutableStateOf(appItem.isAllowed) }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = appItem.appName, fontSize = 16.sp)
+                            Text(text = appItem.packageName, fontSize = 12.sp, color = Color.Gray)
+                        }
+                        Switch(
+                            checked = isChecked,
+                            onCheckedChange = { checked ->
+                                isChecked = checked
+                                appItem.isAllowed = checked
+                                prefsManager.setPackageAllowed(appItem.packageName, checked)
+                            }
+                        )
+                    }
+                    HorizontalDivider()
+                }
+            }
+        }
+    }
+
+    @Composable
+    fun SettingsTabScreen() {
+        var apiKey by remember { mutableStateOf(prefsManager.getApiKey()) }
+        var isSaved by remember { mutableStateOf(false) }
+
+        Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+            Text(text = "Settings", style = MaterialTheme.typography.headlineMedium)
+            Spacer(modifier = Modifier.height(16.dp))
+
+            OutlinedTextField(
+                value = apiKey,
+                onValueChange = {
+                    apiKey = it
+                    isSaved = false
+                },
+                label = { Text("Gemini API Key") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = {
+                    prefsManager.setApiKey(apiKey)
+                    isSaved = true
+                },
+                modifier = Modifier.align(Alignment.End)
+            ) {
+                Text("Save Key")
+            }
+
+            if (isSaved) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(text = "API Key saved successfully.", color = MaterialTheme.colorScheme.primary)
+            }
+        }
     }
 }
