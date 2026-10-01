@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Jarvis</string>
+    <string name="accessibility_service_desc">Enables Jarvis to read screen context and interact with allowed applications.</string>
+</resources>
+  
