@@ -1,9 +1,13 @@
 package com.jarvis.app
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.GestureDescription
+import android.graphics.Path
+import android.graphics.Rect
 import android.os.Bundle
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -21,10 +25,7 @@ class JarvisAccessibilityService : AccessibilityService() {
         instance = this
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // Battery preservation: event stream ignored while idle
-    }
-
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
     override fun onInterrupt() {}
 
     override fun onDestroy() {
@@ -32,20 +33,35 @@ class JarvisAccessibilityService : AccessibilityService() {
         instance = null
     }
 
-    fun getScreenContent(allowedPackages: Set<String>): JSONObject {
-        val root = rootInActiveWindow ?: return JSONObject().apply {
-            put("status", "error")
-            put("message", "No active window found or screen is off.")
-        }
-
-        val currentPackage = root.packageName?.toString() ?: ""
-        if (!allowedPackages.contains(currentPackage)) {
-            return JSONObject().apply {
-                put("status", "error")
-                put("message", "Current foreground app ($currentPackage) is not in the allowed list.")
+    private fun getTargetAppRoot(allowedPackages: Set<String>): AccessibilityNodeInfo? {
+        val allWindows = try { windows } catch (_: Exception) { null }
+        if (!allWindows.isNullOrEmpty()) {
+            for (w in allWindows) {
+                if (w.type == AccessibilityWindowInfo.TYPE_APPLICATION) {
+                    val root = w.root ?: continue
+                    val pkg = root.packageName?.toString() ?: ""
+                    if (pkg != packageName && allowedPackages.contains(pkg)) {
+                        return root
+                    }
+                }
             }
         }
 
+        val active = rootInActiveWindow ?: return null
+        val activePkg = active.packageName?.toString() ?: ""
+        if (activePkg != packageName && allowedPackages.contains(activePkg)) {
+            return active
+        }
+        return null
+    }
+
+    fun getScreenContent(allowedPackages: Set<String>): JSONObject {
+        val root = getTargetAppRoot(allowedPackages) ?: return JSONObject().apply {
+            put("status", "error")
+            put("message", "No allowed background or foreground application window found. Ensure the target app is running and enabled in Apps tab.")
+        }
+
+        val currentPackage = root.packageName?.toString() ?: ""
         val elementsArray = JSONArray()
         collectInteractiveElements(root, elementsArray)
 
@@ -81,23 +97,41 @@ class JarvisAccessibilityService : AccessibilityService() {
     }
 
     fun clickElement(identifier: String, allowedPackages: Set<String>): Boolean {
-        val root = rootInActiveWindow ?: return false
-        val currentPackage = root.packageName?.toString() ?: ""
-        if (!allowedPackages.contains(currentPackage)) return false
-
+        val root = getTargetAppRoot(allowedPackages) ?: return false
         val target = findNode(root, identifier) ?: return false
-        return if (target.isClickable) {
-            target.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-        } else {
-            target.parent?.performAction(AccessibilityNodeInfo.ACTION_CLICK) ?: false
+
+        // Attempt 1: Standard accessibility click
+        if (target.isClickable && target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+            return true
         }
+
+        // Attempt 2: Parent clickable
+        var parent = target.parent
+        while (parent != null) {
+            if (parent.isClickable && parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                return true
+            }
+            parent = parent.parent
+        }
+
+        // Attempt 3: Gesture click on element bounds
+        val bounds = Rect()
+        target.getBoundsInScreen(bounds)
+        if (!bounds.isEmpty) {
+            val clickPath = Path().apply {
+                moveTo(bounds.exactCenterX(), bounds.exactCenterY())
+            }
+            val gesture = GestureDescription.Builder()
+                .addStroke(GestureDescription.StrokeDescription(clickPath, 0, 80))
+                .build()
+            return dispatchGesture(gesture, null, null)
+        }
+
+        return false
     }
 
     fun inputText(identifier: String, text: String, allowedPackages: Set<String>): Boolean {
-        val root = rootInActiveWindow ?: return false
-        val currentPackage = root.packageName?.toString() ?: ""
-        if (!allowedPackages.contains(currentPackage)) return false
-
+        val root = getTargetAppRoot(allowedPackages) ?: return false
         val target = findNode(root, identifier) ?: return false
         val args = Bundle().apply {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
@@ -114,13 +148,13 @@ class JarvisAccessibilityService : AccessibilityService() {
 
         if (text.contains(query, ignoreCase = true) ||
             desc.contains(query, ignoreCase = true) ||
-            id.equals(query, ignoreCase = true)) {
+            id.contains(query, ignoreCase = true)) {
             return root
         }
 
         for (i in 0 until root.childCount) {
-            val result = findNode(root.getChild(i), query)
-            if (result != null) return result
+            val res = findNode(root.getChild(i), query)
+            if (res != null) return res
         }
         return null
     }
