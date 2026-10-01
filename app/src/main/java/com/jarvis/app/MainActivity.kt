@@ -44,11 +44,14 @@ class MainActivity : ComponentActivity() {
     private var confirmContinuation: ((Boolean) -> Unit)? = null
     private var showConfirmationState by mutableStateOf<String?>(null)
 
-        override fun onCreate(savedInstanceState: Bundle?) {
+    override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         prefsManager = PreferencesManager(applicationContext)
-        geminiClient = GeminiClient { prefsManager.getApiKey() }
+        geminiClient = GeminiClient(
+            apiKeyProvider = { prefsManager.getApiKey() },
+            modelProvider = { prefsManager.getModelName() }
+        )
 
         val confirmHandler: suspend (String) -> Boolean = { details ->
             suspendCancellableCoroutine<Boolean> { continuation: CancellableContinuation<Boolean> ->
@@ -78,8 +81,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             JarvisMainScreen()
         }
-        }
-        
+    }
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
@@ -282,6 +284,7 @@ class MainActivity : ComponentActivity() {
     @Composable
     fun SettingsTabScreen() {
         var apiKey by remember { mutableStateOf(prefsManager.getApiKey()) }
+        var modelName by remember { mutableStateOf(prefsManager.getModelName()) }
         var isSaved by remember { mutableStateOf(false) }
 
         Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
@@ -301,19 +304,33 @@ class MainActivity : ComponentActivity() {
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            OutlinedTextField(
+                value = modelName,
+                onValueChange = {
+                    modelName = it
+                    isSaved = false
+                },
+                label = { Text("Model Name (e.g. gemini-2.5-flash)") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             Button(
                 onClick = {
                     prefsManager.setApiKey(apiKey)
+                    prefsManager.setModelName(modelName)
                     isSaved = true
                 },
                 modifier = Modifier.align(Alignment.End)
             ) {
-                Text("Save Key")
+                Text("Save Settings")
             }
 
             if (isSaved) {
                 Spacer(modifier = Modifier.height(8.dp))
-                Text(text = "API Key saved successfully.", color = MaterialTheme.colorScheme.primary)
+                Text(text = "Settings saved successfully.", color = MaterialTheme.colorScheme.primary)
             }
         }
     }
