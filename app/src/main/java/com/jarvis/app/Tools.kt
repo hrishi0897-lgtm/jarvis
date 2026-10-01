@@ -2,7 +2,6 @@ package com.jarvis.app
 
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.provider.AlarmClock
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -17,198 +16,256 @@ class Tools(
 ) {
 
     fun getToolDeclarations(): JSONArray {
-        val listApps = JSONObject().apply {
+        val toolsArray = JSONArray()
+
+        val openApp = JSONObject().apply {
+            put("name", "open_app")
+            put("description", "Opens an allowed Android application using its package name or common app name.")
+            put("parameters", JSONObject().apply {
+                put("type", "object")
+                put("properties", JSONObject().apply {
+                    put("app_name", JSONObject().apply {
+                        put("type", "string")
+                        put("description", "The package name or common label of the app to launch.")
+                    })
+                })
+                put("required", JSONArray().apply { put("app_name") })
+            })
+        }
+
+        val setAlarm = JSONObject().apply {
+            put("name", "set_alarm")
+            put("description", "Sets an alarm for a specific hour, minute, and optional message label.")
+            put("parameters", JSONObject().apply {
+                put("type", "object")
+                put("properties", JSONObject().apply {
+                    put("hour", JSONObject().apply {
+                        put("type", "integer")
+                        put("description", "The hour of the day in 24-hour format (0-23).")
+                    })
+                    put("minutes", JSONObject().apply {
+                        put("type", "integer")
+                        put("description", "The minute value (0-59).")
+                    })
+                    put("message", JSONObject().apply {
+                        put("type", "string")
+                        put("description", "Label or message for the alarm.")
+                    })
+                })
+                put("required", JSONArray().apply {
+                    put("hour")
+                    put("minutes")
+                })
+            })
+        }
+
+        val listAllowedApps = JSONObject().apply {
             put("name", "list_allowed_apps")
-            put("description", "Lists all applications currently allowed to be accessed by Jarvis.")
+            put("description", "Returns the list of package names that the user has granted permission to interact with.")
             put("parameters", JSONObject().apply {
                 put("type", "object")
                 put("properties", JSONObject())
             })
         }
 
-        val openApp = JSONObject().apply {
-            put("name", "open_app")
-            put("description", "Opens an allowed application on the phone given its package name.")
-            put("parameters", JSONObject().apply {
-                put("type", "object")
-                put("properties", JSONObject().apply {
-                    put("package_name", JSONObject().apply {
-                        put("type", "string")
-                        put("description", "The Android package name of the app to launch.")
-                    })
-                })
-                put("required", JSONArray().apply { put("package_name") })
-            })
-        }
-
-        val setAlarm = JSONObject().apply {
-            put("name", "set_alarm")
-            put("description", "Sets an alarm for a specific hour and minute.")
-            put("parameters", JSONObject().apply {
-                put("type", "object")
-                put("properties", JSONObject().apply {
-                    put("hour", JSONObject().apply {
-                        put("type", "integer")
-                        put("description", "Hour of day (0-23)")
-                    })
-                    put("minute", JSONObject().apply {
-                        put("type", "integer")
-                        put("description", "Minute of hour (0-59)")
-                    })
-                    put("label", JSONObject().apply {
-                        put("type", "string")
-                        put("description", "Optional label for the alarm")
-                    })
-                })
-                put("required", JSONArray().apply {
-                    put("hour")
-                    put("minute")
-                })
-            })
-        }
-
-        val termuxRun = JSONObject().apply {
-            put("name", "termux_run")
-            put("description", "Executes a shell command in the Termux environment and returns stdout, stderr, and exitCode.")
+        val runTermux = JSONObject().apply {
+            put("name", "run_termux_command")
+            put("description", "Executes a shell command inside Termux and captures the output.")
             put("parameters", JSONObject().apply {
                 put("type", "object")
                 put("properties", JSONObject().apply {
                     put("command", JSONObject().apply {
                         put("type", "string")
-                        put("description", "The bash command to run inside Termux.")
+                        put("description", "The exact bash shell command to run.")
                     })
                 })
                 put("required", JSONArray().apply { put("command") })
             })
         }
 
-        val listMessages = JSONObject().apply {
+        val listRecentMessages = JSONObject().apply {
             put("name", "list_recent_messages")
-            put("description", "Retrieves recent incoming notifications/messages from allowed applications.")
+            put("description", "Fetches captured notifications and messaging previews from allowed apps.")
             put("parameters", JSONObject().apply {
                 put("type", "object")
                 put("properties", JSONObject().apply {
                     put("limit", JSONObject().apply {
                         put("type", "integer")
-                        put("description", "Max count of messages to fetch (default 10, max 40).")
+                        put("description", "Maximum number of recent messages to return (default 10).")
                     })
                 })
             })
         }
 
-        val replyMessage = JSONObject().apply {
-            put("name", "reply_to_message")
-            put("description", "Sends an inline reply to a specific message using its unique message ID.")
+        val replyNotification = JSONObject().apply {
+            put("name", "reply_notification")
+            put("description", "Sends an inline reply to a captured messaging notification by its ID.")
             put("parameters", JSONObject().apply {
                 put("type", "object")
                 put("properties", JSONObject().apply {
-                    put("id", JSONObject().apply {
+                    put("message_id", JSONObject().apply {
                         put("type", "integer")
-                        put("description", "The integer ID of the target message.")
+                        put("description", "The unique integer ID of the notification to reply to.")
                     })
-                    put("text", JSONObject().apply {
+                    put("reply_text", JSONObject().apply {
                         put("type", "string")
-                        put("description", "The reply body to send.")
+                        put("description", "The reply message content.")
                     })
                 })
                 put("required", JSONArray().apply {
-                    put("id")
+                    put("message_id")
+                    put("reply_text")
+                })
+            })
+        }
+
+        val readScreen = JSONObject().apply {
+            put("name", "read_screen")
+            put("description", "Inspects and returns the text, descriptions, and interactive elements of the active foreground allowed app.")
+            put("parameters", JSONObject().apply {
+                put("type", "object")
+                put("properties", JSONObject())
+            })
+        }
+
+        val clickElem = JSONObject().apply {
+            put("name", "click_element")
+            put("description", "Clicks a button or interactive UI element in the active allowed app by its text, description, or resource ID.")
+            put("parameters", JSONObject().apply {
+                put("type", "object")
+                put("properties", JSONObject().apply {
+                    put("identifier", JSONObject().apply {
+                        put("type", "string")
+                        put("description", "The visible label, content description, or resource ID of the element to tap.")
+                    })
+                })
+                put("required", JSONArray().apply { put("identifier") })
+            })
+        }
+
+        val inputTextElem = JSONObject().apply {
+            put("name", "input_text_element")
+            put("description", "Enters text into an editable input field in the active allowed app.")
+            put("parameters", JSONObject().apply {
+                put("type", "object")
+                put("properties", JSONObject().apply {
+                    put("identifier", JSONObject().apply {
+                        put("type", "string")
+                        put("description", "The hint, current text, or ID of the target input field.")
+                    })
+                    put("text", JSONObject().apply {
+                        put("type", "string")
+                        put("description", "The text to insert into the field.")
+                    })
+                })
+                put("required", JSONArray().apply {
+                    put("identifier")
                     put("text")
                 })
             })
         }
 
+        toolsArray.put(openApp)
+        toolsArray.put(setAlarm)
+        toolsArray.put(listAllowedApps)
+        toolsArray.put(runTermux)
+        toolsArray.put(listRecentMessages)
+        toolsArray.put(replyNotification)
+        toolsArray.put(readScreen)
+        toolsArray.put(clickElem)
+        toolsArray.put(inputTextElem)
+
         return JSONArray().apply {
             put(JSONObject().apply {
-                put("function_declarations", JSONArray().apply {
-                    put(listApps)
-                    put(openApp)
-                    put(setAlarm)
-                    put(termuxRun)
-                    put(listMessages)
-                    put(replyMessage)
-                })
+                put("function_declarations", toolsArray)
             })
         }
     }
 
-    suspend fun execute(name: String, args: JSONObject): JSONObject = withContext(Dispatchers.Main) {
+    suspend fun execute(name: String, args: JSONObject): JSONObject = withContext(Dispatchers.IO) {
         val result = JSONObject()
         try {
             when (name) {
-                "list_allowed_apps" -> {
-                    val allowed = prefsManager.getAllowedPackages()
+                "open_app" -> {
+                    val appQuery = args.getString("app_name").trim()
                     val pm = context.packageManager
-                    val array = JSONArray()
-                    for (pkg in allowed) {
-                        try {
-                            val appInfo = pm.getApplicationInfo(pkg, 0)
-                            val label = pm.getApplicationLabel(appInfo).toString()
-                            array.put(JSONObject().apply {
-                                put("package_name", pkg)
-                                put("app_name", label)
-                            })
-                        } catch (_: PackageManager.NameNotFoundException) {
-                            array.put(JSONObject().apply {
-                                put("package_name", pkg)
-                                put("app_name", pkg)
-                            })
+                    val allowed = prefsManager.getAllowedPackages()
+
+                    var targetPkg: String? = null
+                    if (allowed.contains(appQuery)) {
+                        targetPkg = appQuery
+                    } else {
+                        val mainIntent = Intent(Intent.ACTION_MAIN, null).apply {
+                            addCategory(Intent.CATEGORY_LAUNCHER)
+                        }
+                        val apps = pm.queryIntentActivities(mainIntent, 0)
+                        for (app in apps) {
+                            val pkg = app.activityInfo.packageName
+                            if (allowed.contains(pkg)) {
+                                val label = app.loadLabel(pm).toString()
+                                if (label.contains(appQuery, ignoreCase = true) || pkg.contains(appQuery, ignoreCase = true)) {
+                                    targetPkg = pkg
+                                    break
+                                }
+                            }
                         }
                     }
-                    result.put("status", "success")
-                    result.put("allowed_apps", array)
-                }
 
-                "open_app" -> {
-                    val pkg = args.optString("package_name")
-                    val allowed = prefsManager.getAllowedPackages()
-                    if (!allowed.contains(pkg)) {
+                    if (targetPkg == null) {
                         result.put("status", "error")
-                        result.put("message", "App '$pkg' is not in the allowed list.")
+                        result.put("message", "App '$appQuery' is not installed or not added to your allowed apps list.")
                     } else {
-                        val launchIntent = context.packageManager.getLaunchIntentForPackage(pkg)
+                        val launchIntent = pm.getLaunchIntentForPackage(targetPkg)
                         if (launchIntent != null) {
                             launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                             context.startActivity(launchIntent)
                             result.put("status", "success")
-                            result.put("message", "App $pkg launched.")
+                            result.put("message", "Opened $targetPkg")
                         } else {
                             result.put("status", "error")
-                            result.put("message", "Launch intent not found for $pkg.")
+                            result.put("message", "Unable to create launch intent for $targetPkg")
                         }
                     }
                 }
 
                 "set_alarm" -> {
                     val hour = args.getInt("hour")
-                    val minute = args.getInt("minute")
-                    val label = args.optString("label", "Alarm")
+                    val minutes = args.getInt("minutes")
+                    val message = args.optString("message", "Jarvis Alarm")
 
-                    val intent = Intent(AlarmClock.ACTION_SET_ALARM).apply {
+                    val alarmIntent = Intent(AlarmClock.ACTION_SET_ALARM).apply {
                         putExtra(AlarmClock.EXTRA_HOUR, hour)
-                        putExtra(AlarmClock.EXTRA_MINUTES, minute)
-                        putExtra(AlarmClock.EXTRA_MESSAGE, label)
+                        putExtra(AlarmClock.EXTRA_MINUTES, minutes)
+                        putExtra(AlarmClock.EXTRA_MESSAGE, message)
                         putExtra(AlarmClock.EXTRA_SKIP_UI, true)
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
 
-                    if (intent.resolveActivity(context.packageManager) != null) {
-                        context.startActivity(intent)
+                    try {
+                        context.startActivity(alarmIntent)
                         result.put("status", "success")
-                        result.put("message", "Alarm set for %02d:%02d with label '$label'".format(hour, minute))
-                    } else {
+                        result.put("message", "Alarm set for %02d:%02d with label '$message'".format(hour, minutes))
+                    } catch (e: Exception) {
                         result.put("status", "error")
-                        result.put("message", "No clock application available to handle alarms.")
+                        result.put("message", "Failed to set alarm: ${e.message}")
                     }
                 }
 
-                "termux_run" -> {
-                    val command = args.getString("command")
-                    val execResult = termuxBridge.runCommand(command)
-                    result.put("status", if (execResult.exitCode == 0) "success" else "error")
-                    result.put("stdout", execResult.stdout)
-                    result.put("stderr", execResult.stderr)
-                    result.put("exit_code", execResult.exitCode)
+                "list_allowed_apps" -> {
+                    val allowed = prefsManager.getAllowedPackages()
+                    val array = JSONArray()
+                    for (pkg in allowed) {
+                        array.put(pkg)
+                    }
+                    result.put("status", "success")
+                    result.put("allowed_apps", array)
+                }
+
+                "run_termux_command" -> {
+                    val cmd = args.getString("command")
+                    val output = termuxBridge.executeCommand(cmd)
+                    result.put("status", "success")
+                    result.put("output", output)
                 }
 
                 "list_recent_messages" -> {
@@ -229,48 +286,92 @@ class Tools(
                     result.put("status", "success")
                     result.put("connected", JarvisNotificationListener.isConnected())
                     result.put("messages", array)
-                                }
-                                
+                }
 
-                "reply_to_message" -> {
-                    val id = args.getInt("id")
-                    val replyText = args.getString("text")
-                    val message = JarvisNotificationListener.getMessageById(id)
+                "reply_notification" -> {
+                    val id = args.getInt("message_id")
+                    val replyText = args.getString("reply_text")
 
-                    if (message == null) {
+                    val msg = JarvisNotificationListener.getMessageById(id)
+                    if (msg == null) {
                         result.put("status", "error")
-                        result.put("message", "Message with ID $id not found.")
-                    } else if (message.replyAction == null) {
-                        result.put("status", "error")
-                        result.put("message", "Message with ID $id does not support direct replies.")
+                        result.put("message", "Notification with ID $id was not found or is no longer active.")
                     } else {
-                        val confirmationMessage = "Send reply to ${message.sender} (${message.packageName}):\n\n\"$replyText\""
-                        val approved = confirmCallback(confirmationMessage)
-
+                        val prompt = "Send reply to ${msg.sender} via ${msg.packageName}:\n\"$replyText\""
+                        val approved = confirmCallback(prompt)
                         if (!approved) {
                             result.put("status", "error")
-                            result.put("message", "Reply canceled by user.")
+                            result.put("message", "Reply action was cancelled by the user.")
                         } else {
                             val success = JarvisNotificationListener.sendReply(context, id, replyText)
                             if (success) {
                                 result.put("status", "success")
-                                result.put("message", "Reply sent successfully.")
+                                result.put("message", "Reply sent to ${msg.sender}.")
                             } else {
                                 result.put("status", "error")
-                                result.put("message", "Failed to dispatch reply intent.")
+                                result.put("message", "Failed to dispatch reply through notification system.")
                             }
+                        }
+                    }
+                }
+
+                "read_screen" -> {
+                    val service = JarvisAccessibilityService.instance
+                    if (service == null) {
+                        result.put("status", "error")
+                        result.put("message", "Jarvis Automation Service is not enabled in Android Accessibility settings.")
+                    } else {
+                        return@withContext service.getScreenContent(prefsManager.getAllowedPackages())
+                    }
+                }
+
+                "click_element" -> {
+                    val identifier = args.getString("identifier")
+                    val approved = confirmCallback("Jarvis wants to tap on '$identifier' on screen.")
+                    if (!approved) {
+                        result.put("status", "error")
+                        result.put("message", "Click action cancelled by user.")
+                    } else {
+                        val service = JarvisAccessibilityService.instance
+                        if (service == null) {
+                            result.put("status", "error")
+                            result.put("message", "Accessibility Service is not enabled.")
+                        } else {
+                            val success = service.clickElement(identifier, prefsManager.getAllowedPackages())
+                            result.put("status", if (success) "success" else "error")
+                            result.put("message", if (success) "Clicked '$identifier'." else "Element '$identifier' not found or current foreground app is not allowed.")
+                        }
+                    }
+                }
+
+                "input_text_element" -> {
+                    val identifier = args.getString("identifier")
+                    val text = args.getString("text")
+                    val approved = confirmCallback("Jarvis wants to type \"$text\" into '$identifier'.")
+                    if (!approved) {
+                        result.put("status", "error")
+                        result.put("message", "Typing action cancelled by user.")
+                    } else {
+                        val service = JarvisAccessibilityService.instance
+                        if (service == null) {
+                            result.put("status", "error")
+                            result.put("message", "Accessibility Service is not enabled.")
+                        } else {
+                            val success = service.inputText(identifier, text, prefsManager.getAllowedPackages())
+                            result.put("status", if (success) "success" else "error")
+                            result.put("message", if (success) "Entered text into '$identifier'." else "Input field not found or current foreground app is not allowed.")
                         }
                     }
                 }
 
                 else -> {
                     result.put("status", "error")
-                    result.put("message", "Unknown tool function: $name")
+                    result.put("message", "Unknown tool function '$name'.")
                 }
             }
         } catch (e: Exception) {
             result.put("status", "error")
-            result.put("message", e.message ?: "Execution failed")
+            result.put("message", "Exception during execution: ${e.message}")
         }
         result
     }
