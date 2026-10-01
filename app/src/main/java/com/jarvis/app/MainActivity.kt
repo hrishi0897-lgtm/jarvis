@@ -33,6 +33,11 @@ data class InstalledAppItem(
     var isAllowed: Boolean
 )
 
+data class ModelOption(
+    val label: String,
+    val modelId: String
+)
+
 class MainActivity : ComponentActivity() {
 
     private lateinit var prefsManager: PreferencesManager
@@ -43,6 +48,20 @@ class MainActivity : ComponentActivity() {
     private val conversationHistory = mutableListOf<JSONObject>()
     private var confirmContinuation: ((Boolean) -> Unit)? = null
     private var showConfirmationState by mutableStateOf<String?>(null)
+
+    companion object {
+        val SUPPORTED_MODELS = listOf(
+            ModelOption("Gemini 3.8 Flash", "gemini-3.8-flash"),
+            ModelOption("Gemini 3.7 Flash", "gemini-3.7-flash"),
+            ModelOption("Gemini 3.6 Flash", "gemini-3.6-flash"),
+            ModelOption("Gemini 3.5 Flash", "gemini-3.5-flash"),
+            ModelOption("Gemini 3.5 Flash Lite", "gemini-3.5-flash-lite"),
+            ModelOption("Gemini 3.1 Flash Lite", "gemini-3.1-flash-lite"),
+            ModelOption("Gemini 3 Flash Preview", "gemini-3-flash-preview"),
+            ModelOption("Gemini Flash Latest", "gemini-flash-latest"),
+            ModelOption("Gemini Flash-Lite Latest", "gemini-flash-lite-latest")
+        )
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -281,11 +300,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     fun SettingsTabScreen() {
         var apiKey by remember { mutableStateOf(prefsManager.getApiKey()) }
-        var modelName by remember { mutableStateOf(prefsManager.getModelName()) }
+        var selectedModelId by remember { mutableStateOf(prefsManager.getModelName()) }
+        var expanded by remember { mutableStateOf(false) }
         var isSaved by remember { mutableStateOf(false) }
+
+        val currentLabel = SUPPORTED_MODELS.firstOrNull { it.modelId == selectedModelId }?.label
+            ?: selectedModelId
 
         Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
             Text(text = "Settings", style = MaterialTheme.typography.headlineMedium)
@@ -304,23 +328,45 @@ class MainActivity : ComponentActivity() {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            OutlinedTextField(
-                value = modelName,
-                onValueChange = {
-                    modelName = it
-                    isSaved = false
-                },
-                label = { Text("Model Name (e.g. gemini-2.5-flash)") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
+            ExposedDropdownMenuBox(
+                expanded = expanded,
+                onExpandedChange = { expanded = !expanded },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                OutlinedTextField(
+                    value = currentLabel,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Select Gemini Model") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    modifier = Modifier
+                        .menuAnchor()
+                        .fillMaxWidth()
+                )
 
-            Spacer(modifier = Modifier.height(16.dp))
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false }
+                ) {
+                    SUPPORTED_MODELS.forEach { option ->
+                        DropdownMenuItem(
+                            text = { Text(option.label) },
+                            onClick = {
+                                selectedModelId = option.modelId
+                                expanded = false
+                                isSaved = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
 
             Button(
                 onClick = {
                     prefsManager.setApiKey(apiKey)
-                    prefsManager.setModelName(modelName)
+                    prefsManager.setModelName(selectedModelId)
                     isSaved = true
                 },
                 modifier = Modifier.align(Alignment.End)
