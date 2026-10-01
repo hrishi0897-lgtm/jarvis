@@ -12,6 +12,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
+import kotlin.coroutines.resume
 
 class TermuxBridge(
     private val context: Context,
@@ -92,7 +93,7 @@ class TermuxBridge(
         }
 
         val rawResult = withTimeoutOrNull(25000L) {
-            suspendCancellableCoroutine { continuation: CancellableContinuation<TermuxExecutionResult> ->
+            suspendCancellableCoroutine<TermuxExecutionResult> { continuation: CancellableContinuation<TermuxExecutionResult> ->
                 TermuxResultReceiver.pendingContinuations[executionId] = continuation
                 continuation.invokeOnCancellation {
                     TermuxResultReceiver.pendingContinuations.remove(executionId)
