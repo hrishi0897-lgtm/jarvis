@@ -73,13 +73,17 @@ class MainActivity : ComponentActivity() {
         )
 
         val confirmHandler: suspend (String) -> Boolean = { details ->
-            suspendCancellableCoroutine<Boolean> { continuation: CancellableContinuation<Boolean> ->
-                confirmContinuation = { allowed: Boolean ->
-                    if (continuation.isActive) {
-                        continuation.resume(allowed)
+            if (!hasWindowFocus()) {
+                OverlayConfirmationManager.requestConfirmation(applicationContext, details)
+            } else {
+                suspendCancellableCoroutine<Boolean> { continuation: CancellableContinuation<Boolean> ->
+                    confirmContinuation = { allowed: Boolean ->
+                        if (continuation.isActive) {
+                            continuation.resume(allowed)
+                        }
                     }
+                    showConfirmationState = details
                 }
-                showConfirmationState = details
             }
         }
 
