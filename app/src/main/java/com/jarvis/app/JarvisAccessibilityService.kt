@@ -5,6 +5,7 @@ import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.graphics.Rect
 import android.os.Bundle
+import android.util.DisplayMetrics
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
@@ -80,14 +81,20 @@ class JarvisAccessibilityService : AccessibilityService() {
         val viewId = node.viewIdResourceName ?: ""
         val isClickable = node.isClickable
         val isEditable = node.isEditable
+        val isScrollable = node.isScrollable
 
-        if (text.isNotBlank() || contentDesc.isNotBlank() || isClickable || isEditable) {
+        if (text.isNotBlank() || contentDesc.isNotBlank() || isClickable || isEditable || isScrollable) {
+            val bounds = Rect()
+            node.getBoundsInScreen(bounds)
+
             elements.put(JSONObject().apply {
                 if (text.isNotBlank()) put("text", text)
                 if (contentDesc.isNotBlank()) put("description", contentDesc)
                 if (viewId.isNotBlank()) put("id", viewId)
                 put("clickable", isClickable)
                 put("editable", isEditable)
+                put("scrollable", isScrollable)
+                put("bounds", "${bounds.left},${bounds.top},${bounds.right},${bounds.bottom}")
             })
         }
 
@@ -96,16 +103,72 @@ class JarvisAccessibilityService : AccessibilityService() {
         }
     }
 
+    fun scrollScreen(direction: String, allowedPackages: Set<String>): Boolean {
+        val root = getTargetAppRoot(allowedPackages) ?: return false
+
+        // Attempt 1: Target scrollable node directly
+        val scrollableNode = findScrollableNode(root)
+        if (scrollableNode != null) {
+            val action = if (direction.equals("down", ignoreCase = true)) {
+                AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+            } else {
+                AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+            }
+            if (scrollableNode.performAction(action)) {
+                return true
+            }
+        }
+
+        // Attempt 2: Gesture swipe on screen center
+        val metrics: DisplayMetrics = resources.displayMetrics
+        val width = metrics.widthPixels.toFloat()
+        val height = metrics.heightPixels.toFloat()
+        val centerX = width / 2f
+
+        val startY: Float
+        val endY: Float
+
+        if (direction.equals("down", ignoreCase = true)) {
+            // Scroll down = swipe finger up
+            startY = height * 0.75f
+            endY = height * 0.25f
+        } else {
+            // Scroll up = swipe finger down
+            startY = height * 0.25f
+            endY = height * 0.75f
+        }
+
+        val path = Path().apply {
+            moveTo(centerX, startY)
+            lineTo(centerX, endY)
+        }
+
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(path, 0, 300))
+            .build()
+
+        return dispatchGesture(gesture, null, null)
+    }
+
+    private fun findScrollableNode(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+        if (node == null) return null
+        if (node.isScrollable) return node
+
+        for (i in 0 until node.childCount) {
+            val found = findScrollableNode(node.getChild(i))
+            if (found != null) return found
+        }
+        return null
+    }
+
     fun clickElement(identifier: String, allowedPackages: Set<String>): Boolean {
         val root = getTargetAppRoot(allowedPackages) ?: return false
         val target = findNode(root, identifier) ?: return false
 
-        // Attempt 1: Standard accessibility click
         if (target.isClickable && target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
             return true
         }
 
-        // Attempt 2: Parent clickable
         var parent = target.parent
         while (parent != null) {
             if (parent.isClickable && parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
@@ -114,7 +177,6 @@ class JarvisAccessibilityService : AccessibilityService() {
             parent = parent.parent
         }
 
-        // Attempt 3: Gesture click on element bounds
         val bounds = Rect()
         target.getBoundsInScreen(bounds)
         if (!bounds.isEmpty) {
