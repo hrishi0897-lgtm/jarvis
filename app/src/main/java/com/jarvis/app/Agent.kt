@@ -51,8 +51,8 @@ Follow these guidelines strictly:
             if (candidates.length() == 0) break
 
             val firstCandidate = candidates.getJSONObject(0)
-            val content = firstCandidate.optJSONObject("content") ?: break
-            val parts = content.optJSONArray("parts") ?: break
+            val modelContent = firstCandidate.optJSONObject("content") ?: break
+            val parts = modelContent.optJSONArray("parts") ?: break
 
             var functionCallFound = false
 
@@ -68,17 +68,10 @@ Follow these guidelines strictly:
 
                     val toolResult = tools.execute(name, args)
 
-                    // Add model turn containing the functionCall
-                    conversationHistory.add(JSONObject().apply {
-                        put("role", "model")
-                        put("parts", JSONArray().apply {
-                            put(JSONObject().apply {
-                                put("functionCall", functionCall)
-                            })
-                        })
-                    })
+                    // Retain the entire untouched model content to preserve thought_signatures
+                    conversationHistory.add(modelContent)
 
-                    // Add function response under role "user"
+                    // Add function response turn under role "user"
                     conversationHistory.add(JSONObject().apply {
                         put("role", "user")
                         put("parts", JSONArray().apply {
@@ -99,12 +92,7 @@ Follow these guidelines strictly:
                     val part = parts.getJSONObject(i)
                     if (part.has("text")) {
                         val replyText = part.getString("text").trim()
-                        conversationHistory.add(JSONObject().apply {
-                            put("role", "model")
-                            put("parts", JSONArray().apply {
-                                put(JSONObject().apply { put("text", replyText) })
-                            })
-                        })
+                        conversationHistory.add(modelContent)
                         return replyText
                     }
                 }
