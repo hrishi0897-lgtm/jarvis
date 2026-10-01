@@ -11,10 +11,13 @@ import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
-class GeminiClient(private val apiKeyProvider: () -> String) {
+class GeminiClient(
+    private val modelName: String = MODEL_NAME,
+    private val apiKeyProvider: () -> String
+) {
 
     companion object {
-        const val MODEL_NAME = "gemini-2.5-flash"
+        const val MODEL_NAME = "gemini-3.7-flash"
         private const val BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/"
     }
 
@@ -33,7 +36,7 @@ class GeminiClient(private val apiKeyProvider: () -> String) {
             throw IllegalStateException("Gemini API key is not configured. Add it in the Settings tab.")
         }
 
-        val url = "$BASE_URL$MODEL_NAME:generateContent"
+        val url = "$BASE_URL$modelName:generateContent"
         val payload = JSONObject().apply {
             put("contents", contents)
             if (tools != null && tools.length() > 0) {
