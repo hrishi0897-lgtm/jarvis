@@ -12,12 +12,11 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 class GeminiClient(
-    private val modelName: String = MODEL_NAME,
-    private val apiKeyProvider: () -> String
+    private val apiKeyProvider: () -> String,
+    private val modelProvider: () -> String
 ) {
 
     companion object {
-        const val MODEL_NAME = "gemini-3.7-flash"
         private const val BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/"
     }
 
@@ -36,7 +35,9 @@ class GeminiClient(
             throw IllegalStateException("Gemini API key is not configured. Add it in the Settings tab.")
         }
 
-        val url = "$BASE_URL$modelName:generateContent"
+        val model = modelProvider().ifBlank { PreferencesManager.DEFAULT_MODEL }
+        val url = "$BASE_URL$model:generateContent"
+
         val payload = JSONObject().apply {
             put("contents", contents)
             if (tools != null && tools.length() > 0) {
@@ -65,6 +66,9 @@ class GeminiClient(
                     JSONObject(responseBody).optJSONObject("error")?.optString("message") ?: responseBody
                 } catch (_: Exception) {
                     responseBody
+                }
+                if (response.code == 429) {
+                    throw IOException("Rate limit hit (429). The model is temporarily throttled or quota was reached. Switch models in Settings or wait a few seconds.")
                 }
                 throw IOException("Gemini API error (${response.code}): $errorMsg")
             }
