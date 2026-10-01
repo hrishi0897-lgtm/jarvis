@@ -1,74 +1,32 @@
-package com.jarvis.app
+name: Build Jarvis APK
 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONArray
-import org.json.JSONObject
-import java.io.IOException
-import java.util.concurrent.TimeUnit
+on:
+  workflow_dispatch:
 
-class GeminiClient(
-    private val modelName: String = MODEL_NAME,
-    private val apiKeyProvider: () -> String
-) {
+jobs:
+  build:
+    runs-on: ubuntu-latest
 
-    companion object {
-        const val MODEL_NAME = "gemini-3.5-flash"
-        private const val BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/"
-    }
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .build()
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
 
-    suspend fun generateContent(
-        contents: JSONArray,
-        tools: JSONArray?,
-        systemInstruction: String?
-    ): JSONObject = withContext(Dispatchers.IO) {
-        val apiKey = apiKeyProvider()
-        if (apiKey.isBlank()) {
-            throw IllegalStateException("Gemini API key is not configured. Add it in the Settings tab.")
-        }
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
 
-        val url = "$BASE_URL$modelName:generateContent"
-        val payload = JSONObject().apply {
-            put("contents", contents)
-            if (tools != null && tools.length() > 0) {
-                put("tools", tools)
-            }
-            if (!systemInstruction.isNullOrBlank()) {
-                put("systemInstruction", JSONObject().apply {
-                    put("parts", JSONArray().apply {
-                        put(JSONObject().apply { put("text", systemInstruction) })
-                    })
-                })
-            }
-        }
+      - name: Assemble Debug APK
+        run: gradle assembleDebug --stacktrace
 
-        val requestBody = payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
-        val request = Request.Builder()
-            .url(url)
-            .addHeader("x-goog-api-key", apiKey)
-            .post(requestBody)
-            .build()
-
-        client.newCall(request).execute().use { response ->
-            val responseBody = response.body?.string() ?: ""
-            if (!response.isSuccessful) {
-                val errorMsg = try {
-                    JSONObject(responseBody).optJSONObject("error")?.optString("message") ?: responseBody
-                } catch (_: Exception) {
-                    responseBody
-                }
-                throw IOException("Gemini API error (${response.code}): $errorMsg")
-            }
-            JSONObject(responseBody)
-        }
-    }
-}
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Jarvis-Debug-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          
