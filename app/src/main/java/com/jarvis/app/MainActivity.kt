@@ -44,25 +44,32 @@ class MainActivity : ComponentActivity() {
     private var confirmContinuation: ((Boolean) -> Unit)? = null
     private var showConfirmationState by mutableStateOf<String?>(null)
 
-    override fun onCreate(savedInstanceState: Bundle?) {
+        override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         prefsManager = PreferencesManager(applicationContext)
         geminiClient = GeminiClient { prefsManager.getApiKey() }
 
+        val confirmHandler: suspend (String) -> Boolean = { details ->
+            suspendCancellableCoroutine<Boolean> { continuation: CancellableContinuation<Boolean> ->
+                confirmContinuation = { allowed: Boolean ->
+                    if (continuation.isActive) {
+                        continuation.resume(allowed)
+                    }
+                }
+                showConfirmationState = details
+            }
+        }
+
+        val termuxBridge = TermuxBridge(
+            context = applicationContext,
+            confirmCallback = confirmHandler
+        )
+
         tools = Tools(
             context = applicationContext,
             prefsManager = prefsManager,
-            confirmCallback = { details ->
-                suspendCancellableCoroutine<Boolean> { continuation: CancellableContinuation<Boolean> ->
-                    confirmContinuation = { allowed: Boolean ->
-                        if (continuation.isActive) {
-                            continuation.resume(allowed)
-                        }
-                    }
-                    showConfirmationState = details
-                }
-            }
+            termuxBridge = termuxBridge
         )
 
         agent = Agent(geminiClient, tools)
@@ -70,7 +77,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             JarvisMainScreen()
         }
-    }
+        }
+        
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
