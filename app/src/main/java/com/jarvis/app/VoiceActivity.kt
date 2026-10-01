@@ -24,7 +24,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -33,7 +32,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CancellableContinuation
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
@@ -216,7 +214,6 @@ class VoiceActivity : ComponentActivity(), RecognitionListener, TextToSpeech.OnI
         }
     }
 
-    // RecognitionListener
     override fun onReadyForSpeech(params: Bundle?) {
         voiceState = VoiceState.LISTENING
     }
@@ -343,7 +340,6 @@ class VoiceActivity : ComponentActivity(), RecognitionListener, TextToSpeech.OnI
                     .background(backgroundBrush)
                     .padding(24.dp)
             ) {
-                // Top close button
                 IconButton(
                     onClick = { finish() },
                     modifier = Modifier.align(Alignment.TopEnd)
@@ -359,7 +355,6 @@ class VoiceActivity : ComponentActivity(), RecognitionListener, TextToSpeech.OnI
                     }
                 }
 
-                // Middle Orb & Captions
                 Column(
                     modifier = Modifier
                         .align(Alignment.Center)
@@ -374,7 +369,6 @@ class VoiceActivity : ComponentActivity(), RecognitionListener, TextToSpeech.OnI
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null
                             ) {
-                                // Tap interrupts and restarts listening
                                 stopSpeaking()
                                 consecutiveSilenceCount = 0
                                 startListeningSession()
@@ -382,9 +376,13 @@ class VoiceActivity : ComponentActivity(), RecognitionListener, TextToSpeech.OnI
                     ) {
                         Canvas(modifier = Modifier.fillMaxSize()) {
                             val center = Offset(size.width / 2f, size.height / 2f)
-                            val dynamicRadius = (size.minDimension / 2.6f) * (if (voiceState == VoiceState.LISTENING) (1f + micLevel * 0.4f) else pulseScale)
+                            val baseRadius: Float = size.minDimension / 2.6f
+                            val dynamicRadius: Float = if (voiceState == VoiceState.LISTENING) {
+                                baseRadius * (1f + micLevel * 0.4f)
+                            } else {
+                                baseRadius * pulseScale
+                            }
 
-                            // Outer glow
                             drawCircle(
                                 brush = Brush.radialGradient(
                                     colors = listOf(Color(0x554285F4), Color.Transparent),
@@ -395,7 +393,6 @@ class VoiceActivity : ComponentActivity(), RecognitionListener, TextToSpeech.OnI
                                 center = center
                             )
 
-                            // Rotating gradient core
                             rotate(rotationAngle, pivot = center) {
                                 drawCircle(
                                     brush = Brush.sweepGradient(
@@ -412,7 +409,6 @@ class VoiceActivity : ComponentActivity(), RecognitionListener, TextToSpeech.OnI
                                 )
                             }
 
-                            // Specular highlight
                             drawCircle(
                                 brush = Brush.radialGradient(
                                     colors = listOf(Color.White.copy(alpha = 0.65f), Color.Transparent),
@@ -445,7 +441,6 @@ class VoiceActivity : ComponentActivity(), RecognitionListener, TextToSpeech.OnI
                     )
                 }
 
-                // Bottom Status Pill & Mute Button
                 Row(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
@@ -499,7 +494,6 @@ class VoiceActivity : ComponentActivity(), RecognitionListener, TextToSpeech.OnI
                     }
                 }
 
-                // Confirmation Dialog for dangerous tools triggered via voice
                 showConfirmationState?.let { details ->
                     AlertDialog(
                         onDismissRequest = {
