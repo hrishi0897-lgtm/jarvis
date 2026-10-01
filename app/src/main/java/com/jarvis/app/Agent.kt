@@ -68,6 +68,7 @@ Follow these guidelines strictly:
 
                     val toolResult = tools.execute(name, args)
 
+                    // Add model turn containing the functionCall
                     conversationHistory.add(JSONObject().apply {
                         put("role", "model")
                         put("parts", JSONArray().apply {
@@ -77,8 +78,9 @@ Follow these guidelines strictly:
                         })
                     })
 
+                    // Add function response under role "user"
                     conversationHistory.add(JSONObject().apply {
-                        put("role", "function")
+                        put("role", "user")
                         put("parts", JSONArray().apply {
                             put(JSONObject().apply {
                                 put("functionResponse", JSONObject().apply {
