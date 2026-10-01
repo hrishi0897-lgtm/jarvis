@@ -3,12 +3,14 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+    <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
 
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
+        <package android:name="com.termux" />
     </queries>
 
     <application
@@ -16,6 +18,7 @@
         android:label="Jarvis"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -25,6 +28,15 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <receiver
+            android:name=".TermuxResultReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.jarvis.app.TERMUX_RESULT" />
+            </intent-filter>
+        </receiver>
+
     </application>
 
 </manifest>
