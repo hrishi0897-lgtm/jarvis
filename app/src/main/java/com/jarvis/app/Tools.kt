@@ -379,6 +379,19 @@ toolsArray.put(scrollScreen)
                         }
                     }
                 }
+                "scroll_screen" -> {
+    val direction = args.optString("direction", "down")
+    val service = JarvisAccessibilityService.instance
+    if (service == null) {
+        result.put("status", "error")
+        result.put("message", "Jarvis Accessibility Service is not enabled.")
+    } else {
+        val success = service.scrollScreen(direction, prefsManager.getAllowedPackages())
+        result.put("status", if (success) "success" else "error")
+        result.put("message", if (success) "Scrolled $direction." else "Unable to scroll on the current screen.")
+    }
+                }
+                
 
                 else -> {
                     result.put("status", "error")
