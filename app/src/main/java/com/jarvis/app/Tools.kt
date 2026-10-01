@@ -263,7 +263,7 @@ class Tools(
 
                 "run_termux_command" -> {
                     val cmd = args.getString("command")
-                    val output = termuxBridge.executeCommand(cmd)
+                    val output = termuxBridge.runCommand(cmd)
                     result.put("status", "success")
                     result.put("output", output)
                 }
