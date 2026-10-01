@@ -88,20 +88,23 @@ class VoiceActivity : ComponentActivity(), RecognitionListener, TextToSpeech.OnI
         super.onCreate(savedInstanceState)
 
         prefsManager = PreferencesManager(applicationContext)
-geminiClient = GeminiClient(
-    apiKeyProvider = { prefsManager.getApiKey() },
-    modelProvider = { prefsManager.getModelName() }
-)
-
+        geminiClient = GeminiClient(
+            apiKeyProvider = { prefsManager.getApiKey() },
+            modelProvider = { prefsManager.getModelName() }
+        )
 
         val confirmHandler: suspend (String) -> Boolean = { details ->
-            suspendCancellableCoroutine<Boolean> { continuation: CancellableContinuation<Boolean> ->
-                confirmContinuation = { allowed: Boolean ->
-                    if (continuation.isActive) {
-                        continuation.resume(allowed)
+            if (!hasWindowFocus()) {
+                OverlayConfirmationManager.requestConfirmation(applicationContext, details)
+            } else {
+                suspendCancellableCoroutine<Boolean> { continuation: CancellableContinuation<Boolean> ->
+                    confirmContinuation = { allowed: Boolean ->
+                        if (continuation.isActive) {
+                            continuation.resume(allowed)
+                        }
                     }
+                    showConfirmationState = details
                 }
-                showConfirmationState = details
             }
         }
 
