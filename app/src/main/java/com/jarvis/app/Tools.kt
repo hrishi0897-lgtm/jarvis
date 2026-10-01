@@ -12,7 +12,7 @@ import org.json.JSONObject
 class Tools(
     private val context: Context,
     private val prefsManager: PreferencesManager,
-    private val confirmCallback: suspend (String) -> Boolean
+    private val termuxBridge: TermuxBridge
 ) {
 
     fun getToolDeclarations(): JSONArray {
@@ -66,12 +66,30 @@ class Tools(
             })
         }
 
+        val termuxRun = JSONObject().apply {
+            put("name", "termux_run")
+            put("description", "Executes a shell command in the Termux environment and returns stdout, stderr, and exitCode.")
+            put("parameters", JSONObject().apply {
+                put("type", "object")
+                put("properties", JSONObject().apply {
+                    put("command", JSONObject().apply {
+                        put("type", "string")
+                        put("description", "The bash command to run inside Termux.")
+                    })
+                })
+                put("required", JSONArray().apply { put("command") })
+            })
+        }
+
         return JSONArray().apply {
-            put(JSONObject().apply { put("function_declarations", JSONArray().apply {
-                put(listApps)
-                put(openApp)
-                put(setAlarm)
-            }) })
+            put(JSONObject().apply {
+                put("function_declarations", JSONArray().apply {
+                    put(listApps)
+                    put(openApp)
+                    put(setAlarm)
+                    put(termuxRun)
+                })
+            })
         }
     }
 
@@ -143,6 +161,15 @@ class Tools(
                         result.put("status", "error")
                         result.put("message", "No clock application available to handle alarms.")
                     }
+                }
+
+                "termux_run" -> {
+                    val command = args.getString("command")
+                    val execResult = termuxBridge.runCommand(command)
+                    result.put("status", if (execResult.exitCode == 0) "success" else "error")
+                    result.put("stdout", execResult.stdout)
+                    result.put("stderr", execResult.stderr)
+                    result.put("exit_code", execResult.exitCode)
                 }
 
                 else -> {
