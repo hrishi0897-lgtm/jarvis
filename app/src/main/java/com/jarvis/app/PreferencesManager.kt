@@ -10,6 +10,8 @@ class PreferencesManager(context: Context) {
     companion object {
         private const val KEY_API_KEY = "gemini_api_key"
         private const val KEY_ALLOWED_PACKAGES = "allowed_packages"
+        private const val KEY_MODEL_NAME = "gemini_model_name"
+        const val DEFAULT_MODEL = "gemini-2.5-flash"
     }
 
     fun getApiKey(): String {
@@ -18,6 +20,14 @@ class PreferencesManager(context: Context) {
 
     fun setApiKey(apiKey: String) {
         prefs.edit().putString(KEY_API_KEY, apiKey.trim()).apply()
+    }
+
+    fun getModelName(): String {
+        return prefs.getString(KEY_MODEL_NAME, DEFAULT_MODEL) ?: DEFAULT_MODEL
+    }
+
+    fun setModelName(modelName: String) {
+        prefs.edit().putString(KEY_MODEL_NAME, modelName.trim()).apply()
     }
 
     fun getAllowedPackages(): Set<String> {
