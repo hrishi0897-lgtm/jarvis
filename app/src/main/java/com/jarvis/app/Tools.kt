@@ -212,8 +212,9 @@ class Tools(
                 }
 
                 "list_recent_messages" -> {
+                    JarvisNotificationListener.requestRebindIfDead(context)
                     val limit = args.optInt("limit", 10)
-                    val messages = JarvisNotificationListener.getRecentMessages(limit)
+                    val messages = JarvisNotificationListener.getRecentMessages(context, limit)
                     val array = JSONArray()
                     for (msg in messages) {
                         array.put(JSONObject().apply {
@@ -226,8 +227,10 @@ class Tools(
                         })
                     }
                     result.put("status", "success")
+                    result.put("connected", JarvisNotificationListener.isConnected())
                     result.put("messages", array)
-                }
+                                }
+                                
 
                 "reply_to_message" -> {
                     val id = args.getInt("id")
