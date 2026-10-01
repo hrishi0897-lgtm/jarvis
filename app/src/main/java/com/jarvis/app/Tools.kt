@@ -180,6 +180,22 @@ class Tools(
                 put("function_declarations", toolsArray)
             })
         }
+        val scrollScreen = JSONObject().apply {
+    put("name", "scroll_screen")
+    put("description", "Scrolls the active allowed application up or down to reveal more items.")
+    put("parameters", JSONObject().apply {
+        put("type", "object")
+        put("properties", JSONObject().apply {
+            put("direction", JSONObject().apply {
+                put("type", "string")
+                put("description", "Direction to scroll: 'down' (to see lower items) or 'up' (to see higher items).")
+            })
+        })
+        put("required", JSONArray().apply { put("direction") })
+    })
+}
+toolsArray.put(scrollScreen)
+
     }
 
     suspend fun execute(name: String, args: JSONObject): JSONObject = withContext(Dispatchers.IO) {
