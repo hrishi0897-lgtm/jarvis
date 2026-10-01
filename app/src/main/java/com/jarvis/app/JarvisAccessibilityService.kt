@@ -106,7 +106,6 @@ class JarvisAccessibilityService : AccessibilityService() {
     fun scrollScreen(direction: String, allowedPackages: Set<String>): Boolean {
         val root = getTargetAppRoot(allowedPackages) ?: return false
 
-        // Attempt 1: Target scrollable node directly
         val scrollableNode = findScrollableNode(root)
         if (scrollableNode != null) {
             val action = if (direction.equals("down", ignoreCase = true)) {
@@ -119,7 +118,6 @@ class JarvisAccessibilityService : AccessibilityService() {
             }
         }
 
-        // Attempt 2: Gesture swipe on screen center
         val metrics: DisplayMetrics = resources.displayMetrics
         val width = metrics.widthPixels.toFloat()
         val height = metrics.heightPixels.toFloat()
@@ -129,11 +127,9 @@ class JarvisAccessibilityService : AccessibilityService() {
         val endY: Float
 
         if (direction.equals("down", ignoreCase = true)) {
-            // Scroll down = swipe finger up
             startY = height * 0.75f
             endY = height * 0.25f
         } else {
-            // Scroll up = swipe finger down
             startY = height * 0.25f
             endY = height * 0.75f
         }
@@ -165,23 +161,51 @@ class JarvisAccessibilityService : AccessibilityService() {
         val root = getTargetAppRoot(allowedPackages) ?: return false
         val target = findNode(root, identifier) ?: return false
 
-        if (target.isClickable && target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+        // Look upward for the widest row container to avoid clicking profile picture icons
+        var bestContainer: AccessibilityNodeInfo? = null
+        var p = target.parent
+        val metrics = resources.displayMetrics
+        val screenWidth = metrics.widthPixels
+
+        while (p != null) {
+            val pBounds = Rect()
+            p.getBoundsInScreen(pBounds)
+            // If parent spans more than half the screen width, it's the full chat item row
+            if (pBounds.width() > screenWidth * 0.5f) {
+                bestContainer = p
+                break
+            }
+            p = p.parent
+        }
+
+        // Attempt 1: Standard accessibility click on the full row
+        if (bestContainer != null && bestContainer.isClickable && bestContainer.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
             return true
         }
 
-        var parent = target.parent
-        while (parent != null) {
-            if (parent.isClickable && parent.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-                return true
-            }
-            parent = parent.parent
+        // Attempt 2: Target clickable itself (provided it's not a tiny icon)
+        val targetBounds = Rect()
+        target.getBoundsInScreen(targetBounds)
+        if (target.isClickable && targetBounds.width() > 100 && target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+            return true
         }
 
-        val bounds = Rect()
-        target.getBoundsInScreen(bounds)
-        if (!bounds.isEmpty) {
+        // Attempt 3: Precision gesture click towards the text body (center-right of the row)
+        val clickBounds = if (bestContainer != null) {
+            val b = Rect()
+            bestContainer.getBoundsInScreen(b)
+            b
+        } else {
+            targetBounds
+        }
+
+        if (!clickBounds.isEmpty) {
+            // Tap at 60% of the row width to avoid the profile picture on the far left
+            val tapX = (clickBounds.left + clickBounds.width() * 0.60f).coerceIn(clickBounds.left.toFloat(), clickBounds.right.toFloat())
+            val tapY = clickBounds.exactCenterY()
+
             val clickPath = Path().apply {
-                moveTo(bounds.exactCenterX(), bounds.exactCenterY())
+                moveTo(tapX, tapY)
             }
             val gesture = GestureDescription.Builder()
                 .addStroke(GestureDescription.StrokeDescription(clickPath, 0, 80))
@@ -208,6 +232,7 @@ class JarvisAccessibilityService : AccessibilityService() {
         val desc = root.contentDescription?.toString() ?: ""
         val id = root.viewIdResourceName ?: ""
 
+        // Prioritize actual user-visible contact name or title text first
         if (text.contains(query, ignoreCase = true) ||
             desc.contains(query, ignoreCase = true) ||
             id.contains(query, ignoreCase = true)) {
