@@ -128,6 +128,21 @@ class Tools(
             })
         }
 
+        val scrollScreen = JSONObject().apply {
+            put("name", "scroll_screen")
+            put("description", "Scrolls the active allowed application up or down to reveal more items.")
+            put("parameters", JSONObject().apply {
+                put("type", "object")
+                put("properties", JSONObject().apply {
+                    put("direction", JSONObject().apply {
+                        put("type", "string")
+                        put("description", "Direction to scroll: 'down' (to see lower items) or 'up' (to see higher items).")
+                    })
+                })
+                put("required", JSONArray().apply { put("direction") })
+            })
+        }
+
         val clickElem = JSONObject().apply {
             put("name", "click_element")
             put("description", "Clicks a button or interactive UI element in the active allowed app by its text, description, or resource ID.")
@@ -172,6 +187,7 @@ class Tools(
         toolsArray.put(listRecentMessages)
         toolsArray.put(replyNotification)
         toolsArray.put(readScreen)
+        toolsArray.put(scrollScreen)
         toolsArray.put(clickElem)
         toolsArray.put(inputTextElem)
 
@@ -180,22 +196,6 @@ class Tools(
                 put("function_declarations", toolsArray)
             })
         }
-        val scrollScreen = JSONObject().apply {
-    put("name", "scroll_screen")
-    put("description", "Scrolls the active allowed application up or down to reveal more items.")
-    put("parameters", JSONObject().apply {
-        put("type", "object")
-        put("properties", JSONObject().apply {
-            put("direction", JSONObject().apply {
-                put("type", "string")
-                put("description", "Direction to scroll: 'down' (to see lower items) or 'up' (to see higher items).")
-            })
-        })
-        put("required", JSONArray().apply { put("direction") })
-    })
-}
-toolsArray.put(scrollScreen)
-
     }
 
     suspend fun execute(name: String, args: JSONObject): JSONObject = withContext(Dispatchers.IO) {
@@ -341,6 +341,19 @@ toolsArray.put(scrollScreen)
                     }
                 }
 
+                "scroll_screen" -> {
+                    val direction = args.optString("direction", "down")
+                    val service = JarvisAccessibilityService.instance
+                    if (service == null) {
+                        result.put("status", "error")
+                        result.put("message", "Jarvis Automation Service is not enabled.")
+                    } else {
+                        val success = service.scrollScreen(direction, prefsManager.getAllowedPackages())
+                        result.put("status", if (success) "success" else "error")
+                        result.put("message", if (success) "Scrolled $direction." else "Unable to scroll on the current screen.")
+                    }
+                }
+
                 "click_element" -> {
                     val identifier = args.getString("identifier")
                     val approved = confirmCallback("Jarvis wants to tap on '$identifier' on screen.")
@@ -379,19 +392,6 @@ toolsArray.put(scrollScreen)
                         }
                     }
                 }
-                "scroll_screen" -> {
-    val direction = args.optString("direction", "down")
-    val service = JarvisAccessibilityService.instance
-    if (service == null) {
-        result.put("status", "error")
-        result.put("message", "Jarvis Accessibility Service is not enabled.")
-    } else {
-        val success = service.scrollScreen(direction, prefsManager.getAllowedPackages())
-        result.put("status", if (success) "success" else "error")
-        result.put("message", if (success) "Scrolled $direction." else "Unable to scroll on the current screen.")
-    }
-                }
-                
 
                 else -> {
                     result.put("status", "error")
