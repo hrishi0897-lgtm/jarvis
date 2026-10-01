@@ -17,12 +17,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCancellableCoroutine
 
 data class ChatMessage(val sender: String, val text: String)
 
@@ -41,6 +42,7 @@ class MainActivity : ComponentActivity() {
 
     private val conversationHistory = mutableListOf<JSONObject>()
     private var confirmContinuation: ((Boolean) -> Unit)? = null
+    private var showConfirmationState by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -52,8 +54,12 @@ class MainActivity : ComponentActivity() {
             context = applicationContext,
             prefsManager = prefsManager,
             confirmCallback = { details ->
-                suspendCancellableCoroutine { continuation ->
-                    confirmContinuation = { continuation.resume(it) }
+                suspendCancellableCoroutine<Boolean> { continuation: CancellableContinuation<Boolean> ->
+                    confirmContinuation = { allowed: Boolean ->
+                        if (continuation.isActive) {
+                            continuation.resume(allowed)
+                        }
+                    }
                     showConfirmationState = details
                 }
             }
@@ -65,8 +71,6 @@ class MainActivity : ComponentActivity() {
             JarvisMainScreen()
         }
     }
-
-    private var showConfirmationState by mutableStateOf<String?>(null)
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
@@ -189,9 +193,7 @@ class MainActivity : ComponentActivity() {
                                     val reply = agent.runTurn(
                                         conversationHistory = conversationHistory,
                                         userMessage = text,
-                                        onUpdate = { status ->
-                                            // Optional progress tracking
-                                        }
+                                        onUpdate = { _ -> }
                                     )
                                     messages.add(ChatMessage("Jarvis", reply))
                                 } catch (e: Exception) {
