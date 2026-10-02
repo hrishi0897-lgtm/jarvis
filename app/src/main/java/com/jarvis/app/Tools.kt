@@ -23,6 +23,7 @@ class Tools(
     fun getToolDeclarations(): JSONArray {
         val toolsArray = JSONArray()
 
+        // 0: get_device_status
         toolsArray.put(JSONObject().apply {
             put("name", "get_device_status")
             put("description", "Returns the current date, time, battery percentage, and charging state immediately without running shell commands.")
@@ -32,6 +33,7 @@ class Tools(
             })
         })
 
+        // 1: open_app
         toolsArray.put(JSONObject().apply {
             put("name", "open_app")
             put("description", "Launches an application only if it is present in the user's allowed apps list.")
@@ -47,6 +49,7 @@ class Tools(
             })
         })
 
+        // 2: read_screen
         toolsArray.put(JSONObject().apply {
             put("name", "read_screen")
             put("description", "Returns visible elements, text, and coordinates from the foreground window.")
@@ -56,6 +59,7 @@ class Tools(
             })
         })
 
+        // 3: click_element
         toolsArray.put(JSONObject().apply {
             put("name", "click_element")
             put("description", "Taps an element verified from the screen by matching visible text, description, or resource ID.")
@@ -71,6 +75,7 @@ class Tools(
             })
         })
 
+        // 4: type_and_send
         toolsArray.put(JSONObject().apply {
             put("name", "type_and_send")
             put("description", "Types text into the active chat box or input field on screen and sends it.")
@@ -90,6 +95,7 @@ class Tools(
             })
         })
 
+        // 5: send_whatsapp_message
         toolsArray.put(JSONObject().apply {
             put("name", "send_whatsapp_message")
             put("description", "Automates opening WhatsApp, navigating to a contact, typing, and sending a message.")
@@ -112,6 +118,7 @@ class Tools(
             })
         })
 
+        // 6: phone_control
         toolsArray.put(JSONObject().apply {
             put("name", "phone_control")
             put("description", "System level actions: 'home', 'back', 'recents', 'notifications', 'quick_settings', or 'split_screen'.")
@@ -127,18 +134,23 @@ class Tools(
             })
         })
 
+        // 7: swipe_screen (Fixed schema nesting)
         toolsArray.put(JSONObject().apply {
             put("name", "swipe_screen")
             put("description", "Swipes the screen: 'up', 'down', 'left', or 'right'.")
             put("parameters", JSONObject().apply {
-                put("direction", JSONObject().apply {
-                    put("type", "string")
-                    put("description", "'up', 'down', 'left', or 'right'")
+                put("type", "object")
+                put("properties", JSONObject().apply {
+                    put("direction", JSONObject().apply {
+                        put("type", "string")
+                        put("description", "'up', 'down', 'left', or 'right'")
+                    })
                 })
+                put("required", JSONArray().apply { put("direction") })
             })
-            put("required", JSONArray().apply { put("direction") })
         })
 
+        // 8: request_destructive_action
         toolsArray.put(JSONObject().apply {
             put("name", "request_destructive_action")
             put("description", "Requests explicit confirmation before deleting chats, wiping data, or uninstalling apps.")
@@ -154,6 +166,7 @@ class Tools(
             })
         })
 
+        // 9: run_termux_command
         toolsArray.put(JSONObject().apply {
             put("name", "run_termux_command")
             put("description", "Runs bash shell commands in Termux ONLY when user explicitly asks for bash/terminal/script execution.")
@@ -169,6 +182,7 @@ class Tools(
             })
         })
 
+        // 10: set_alarm
         toolsArray.put(JSONObject().apply {
             put("name", "set_alarm")
             put("description", "Sets a clock alarm.")
