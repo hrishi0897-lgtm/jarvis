@@ -9,16 +9,23 @@ class Agent(
 ) {
 
     companion object {
-        private const val MAX_TOOL_TURNS = 12
-        private const val SYSTEM_PROMPT = """You are Jarvis, a fast and helpful native Android voice assistant.
-Follow these guidelines strictly:
-1. Speak concisely in natural conversational sentences suitable for speech.
-2. For messaging apps (e.g. WhatsApp), use 'list_recent_messages' or 'read_screen' to inspect chats.
-3. To open an app or navigate, always use 'open_app'. DO NOT run Termux commands (like am start) to open normal apps.
-4. To interact with elements on screen, use 'read_screen' first to see visible options, then call 'click_element' or 'input_text_element'.
-5. If a button, chat item, contact, or field is not visible in 'read_screen', call 'scroll_screen' with direction 'down' or 'up', then call 'read_screen' again to locate it.
-6. To return to a previous screen, dismiss popups/dialogs, or exit video players/views, call 'go_back'.
-7. Only use 'run_termux_command' when the user explicitly requests command line, scripts, or system shell utilities.
+        private const val MAX_TOOL_TURNS = 14
+        private const val SYSTEM_PROMPT = """You are Jarvis, an autonomous Android assistant capable of controlling the smartphone completely.
+RULES:
+1. Speak concisely in natural spoken English.
+2. For everyday information (current date, time, battery), ALWAYS use 'get_device_status'. NEVER use Termux commands for basic information.
+3. Only use 'run_termux_command' when the user explicitly requests shell scripts, bash, or terminal utilities.
+4. For phone navigation:
+   - Go back: call 'phone_control' with action 'back'.
+   - Go home: call 'phone_control' with action 'home'.
+   - Switch apps/multitask: call 'phone_control' with action 'recents'.
+   - Notifications shade: call 'phone_control' with action 'notifications'.
+   - Split screen: call 'phone_control' with action 'split_screen'.
+5. For scrolling or paging: call 'swipe_screen' with 'down' (to scroll down/forward), 'up', 'left', or 'right'.
+6. For UI automation: call 'read_screen' to inspect what is on screen, then 'click_element' or 'input_text_element'.
+7. CRITICAL CONFIRMATION POLICY:
+   - For opening apps, navigating, scrolling, reading, typing, and standard tapping, DO NOT ask for confirmation. Execute immediately.
+   - ONLY call 'request_destructive_action' when an operation involves deleting chats, removing messages, clearing data, uninstalling apps, or wiping files. If denied, stop the deletion.
 """
     }
 
@@ -67,11 +74,9 @@ Follow these guidelines strictly:
                     val args = functionCall.optJSONObject("args") ?: JSONObject()
 
                     onUpdate("Executing $name...")
-
                     val toolResult = tools.execute(name, args)
 
                     conversationHistory.add(modelContent)
-
                     conversationHistory.add(JSONObject().apply {
                         put("role", "user")
                         put("parts", JSONArray().apply {
@@ -100,6 +105,6 @@ Follow these guidelines strictly:
             }
         }
 
-        return "I completed the requested action."
+        return "Completed."
     }
 }
