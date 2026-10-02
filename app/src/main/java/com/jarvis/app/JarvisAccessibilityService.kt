@@ -180,7 +180,9 @@ class JarvisAccessibilityService : AccessibilityService() {
 
         if (!autoSend) return true
 
-        val sendBtn = findSendButton(root)
+        try { Thread.sleep(200) } catch (_: Exception) {}
+
+        val sendBtn = findSendButton(getTargetAppRoot(allowedPackages) ?: root)
         if (sendBtn != null) {
             if (sendBtn.isClickable && sendBtn.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
                 return true
@@ -208,10 +210,9 @@ class JarvisAccessibilityService : AccessibilityService() {
         }
         if (root == null) return false
 
-        val contactNode = findNode(root, recipient)
-        if (contactNode != null) {
-            clickElement(recipient, allowedPackages)
-        } else {
+        // Tap the chat row directly
+        val clicked = clickElement(recipient, allowedPackages)
+        if (!clicked) {
             val searchNode = findNode(root, "Search") ?: findEditableNode(root)
             if (searchNode != null) {
                 if (searchNode.isEditable) {
@@ -232,12 +233,7 @@ class JarvisAccessibilityService : AccessibilityService() {
 
                 try { Thread.sleep(600) } catch (_: Exception) {}
                 val resultsRoot = getTargetAppRoot(allowedPackages)
-                val resultContact = findNode(resultsRoot, recipient)
-                if (resultContact != null) {
-                    clickElement(recipient, allowedPackages)
-                } else {
-                    return false
-                }
+                clickElement(recipient, allowedPackages)
             }
         }
 
@@ -319,25 +315,29 @@ class JarvisAccessibilityService : AccessibilityService() {
         val root = getTargetAppRoot(allowedPackages) ?: return false
         val target = findNode(root, identifier) ?: return false
 
-        // 1. Direct click on node if clickable
-        if (target.isClickable && target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-            return true
-        }
+        // Tap the right side of the item bounds to avoid the left avatar circle
+        val bounds = Rect()
+        target.getBoundsInScreen(bounds)
 
-        // 2. Climb up parent hierarchy to find clickable wrapper (cards, tiles, list items)
-        var p = target.parent
-        while (p != null) {
-            if (p.isClickable && p.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-                return true
+        var parent = target.parent
+        val metrics = resources.displayMetrics
+        val screenWidth = metrics.widthPixels
+
+        while (parent != null) {
+            val pBounds = Rect()
+            parent.getBoundsInScreen(pBounds)
+            if (pBounds.width() > screenWidth * 0.70f) {
+                val tapX = pBounds.left + (pBounds.width() * 0.60f)
+                val tapY = pBounds.exactCenterY()
+                return tapCoordinates(tapX, tapY)
             }
-            p = p.parent
+            parent = parent.parent
         }
 
-        // 3. Fallback: Dispatch exact coordinate tap on the center of the element bounds
-        val targetBounds = Rect()
-        target.getBoundsInScreen(targetBounds)
-        if (!targetBounds.isEmpty) {
-            return tapCoordinates(targetBounds.exactCenterX(), targetBounds.exactCenterY())
+        if (!bounds.isEmpty) {
+            val tapX = bounds.left + (bounds.width() * 0.60f)
+            val tapY = bounds.exactCenterY()
+            return tapCoordinates(tapX, tapY)
         }
 
         return false
@@ -360,15 +360,22 @@ class JarvisAccessibilityService : AccessibilityService() {
         return target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
     }
 
+    private fun normalize(str: String): String {
+        return str.lowercase().replace(Regex("[^a-z0-9]"), "")
+    }
+
     private fun findNode(root: AccessibilityNodeInfo?, query: String): AccessibilityNodeInfo? {
         if (root == null) return null
 
+        val normQuery = normalize(query)
         val text = root.text?.toString() ?: ""
         val desc = root.contentDescription?.toString() ?: ""
         val id = root.viewIdResourceName ?: ""
 
-        if (text.contains(query, ignoreCase = true) ||
-            desc.contains(query, ignoreCase = true) ||
+        val normText = normalize(text)
+        val normDesc = normalize(desc)
+
+        if ((normQuery.isNotEmpty() && (normText.contains(normQuery) || normDesc.contains(normQuery))) ||
             id.contains(query, ignoreCase = true)) {
             return root
         }
