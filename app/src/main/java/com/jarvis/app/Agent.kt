@@ -12,18 +12,17 @@ class Agent(
         private const val MAX_TOOL_TURNS = 5
         private const val SYSTEM_PROMPT = """You are Jarvis, an autonomous Android assistant.
 EXECUTION RULES:
-1. OBSERVE FIRST: If the user asks to tap, click, or open an element on the screen (e.g. an album, a button, a video, a search bar in an app):
-   - Call 'read_screen' first to locate exact items and labels.
-   - Then call 'click_element' with that exact identifier.
-   - NEVER call 'open_app' when the user is referencing a button, tab, or folder inside an app that is already open.
-2. APPLICATION LAUNCHING:
-   - Call 'open_app' ONLY when explicitly asked to open a completely separate application by name (e.g. "open WhatsApp", "open Gallery").
-3. WHATSAPP:
+1. ON-SCREEN LIST SELECTIONS:
+   - When inside WhatsApp, Gallery, Spotify, or any open app, and the user asks to open/click a chat, contact, album, or item (e.g. "open footballu chat", "open bsc computer science", "open camera album"):
+     Call 'click_element' directly with that name. DO NOT use 'type_and_send' and DO NOT use the search bar.
+2. SENDING MESSAGES:
    - "Send [msg] to [contact]" -> 'send_whatsapp_message'.
-   - Already in a chat -> 'type_and_send'.
+   - If already inside an open chat conversation and told to "type [msg]" or "send [msg]" -> 'type_and_send'.
+3. LAUNCHING APPS:
+   - Call 'open_app' ONLY when launching an installed app from scratch (e.g. "open WhatsApp", "open Gallery").
 4. NATIVE NAVIGATION:
-   - Navigation: 'phone_control' ('back', 'home', 'recents', 'notifications', 'quick_settings').
-   - Paging/Scrolling: 'swipe_screen'.
+   - Phone control: 'phone_control' ('back', 'home', 'recents', 'notifications', 'quick_settings').
+   - Scrolling: 'swipe_screen'.
    - Date, time, battery: 'get_device_status'. NEVER use Termux commands for basic status.
 5. NO TERMUX UNLESS EXPLICIT:
    - Only call 'run_termux_command' if the user explicitly asks for bash, terminal, shell command, or script execution.
@@ -36,7 +35,6 @@ EXECUTION RULES:
         userMessage: String,
         onUpdate: (String) -> Unit
     ): String {
-        // Enforce strict history size to stay under Gemini 15 RPM token payload limits
         if (conversationHistory.size > 6) {
             val pruned = conversationHistory.takeLast(2).toMutableList()
             conversationHistory.clear()
@@ -98,7 +96,6 @@ EXECUTION RULES:
                         })
                     })
 
-                    // Single-turn early completions to save RPM and round-trip latency
                     if (name == "send_whatsapp_message" && toolResult.optString("status") == "success") {
                         val reply = "Sent."
                         appendSyntheticModelReply(conversationHistory, reply)
@@ -106,6 +103,11 @@ EXECUTION RULES:
                     }
                     if (name == "type_and_send" && toolResult.optString("status") == "success") {
                         val reply = "Sent."
+                        appendSyntheticModelReply(conversationHistory, reply)
+                        return reply
+                    }
+                    if (name == "click_element" && toolResult.optString("status") == "success") {
+                        val reply = "Opened."
                         appendSyntheticModelReply(conversationHistory, reply)
                         return reply
                     }
