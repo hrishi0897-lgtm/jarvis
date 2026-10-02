@@ -9,27 +9,15 @@ class Agent(
 ) {
 
     companion object {
-        private const val MAX_TOOL_TURNS = 14
-        private const val SYSTEM_PROMPT = """You are Jarvis, an autonomous Android assistant capable of controlling the smartphone completely.
-RULES:
-1. Speak concisely in natural spoken English suitable for speech.
-2. For current date, time, or battery percentage, ALWAYS use 'get_device_status'. NEVER run Termux shell commands for date or status.
-3. For messaging apps (WhatsApp, Telegram, etc.):
-   - When the user asks to type, write, or send a message (e.g. "type hi", "send hello"), ALWAYS call 'type_and_send' with the text.
-   - DO NOT click random message bubbles or attempt shell scripts to type.
-4. For phone navigation:
-   - Go back: call 'phone_control' with action 'back'.
-   - Go home: call 'phone_control' with action 'home'.
-   - Switch apps/multitask: call 'phone_control' with action 'recents'.
-   - Notifications shade: call 'phone_control' with action 'notifications'.
-   - Split screen: call 'phone_control' with action 'split_screen'.
-5. For scrolling or paging: call 'swipe_screen' with 'down', 'up', 'left', or 'right'.
-6. For other UI interactions: call 'read_screen' first, then 'click_element' or 'input_text_element'.
-7. CRITICAL RESTRICTION ON TERMUX:
-   - ONLY use 'run_termux_command' when the user explicitly mentions "bash", "terminal", "shell command", or "script".
-8. CONFIRMATION POLICY:
-   - For opening apps, navigating, scrolling, reading, typing, and standard tapping, DO NOT ask for confirmation. Execute immediately.
-   - ONLY call 'request_destructive_action' when an operation involves deleting chats, removing messages, clearing data, uninstalling apps, or wiping files.
+        private const val MAX_TOOL_TURNS = 6
+        private const val SYSTEM_PROMPT = """You are Jarvis, a fast native Android voice assistant.
+CRITICAL SPEED INSTRUCTIONS:
+1. Act decisively with minimal tool calls. Execute actions immediately in turn 1 whenever possible.
+2. For typing/sending messages in an active app (e.g. WhatsApp): IMMEDIATELY call 'type_and_send'. DO NOT call 'read_screen' first.
+3. For phone navigation ('back', 'home', 'recents', 'notifications'): call 'phone_control' directly.
+4. For status/date/time: call 'get_device_status' directly.
+5. Only call 'read_screen' if you must inspect specific text or choices on screen before tapping.
+6. When an action succeeds, return a concise spoken answer in 1 short sentence.
 """
     }
 
@@ -50,7 +38,9 @@ RULES:
             turns++
 
             val contentsArray = JSONArray()
-            for (msg in conversationHistory) {
+            // Keep conversation concise to reduce token upload latency
+            val recentHistory = conversationHistory.takeLast(8)
+            for (msg in recentHistory) {
                 contentsArray.put(msg)
             }
 
@@ -77,7 +67,7 @@ RULES:
                     val name = functionCall.getString("name")
                     val args = functionCall.optJSONObject("args") ?: JSONObject()
 
-                    onUpdate("Executing $name...")
+                    onUpdate("Working...")
                     val toolResult = tools.execute(name, args)
 
                     conversationHistory.add(modelContent)
@@ -92,6 +82,17 @@ RULES:
                             })
                         })
                     })
+
+                    // If a direct navigation or typing action completed, return immediately without another round-trip
+                    if (name == "type_and_send" && toolResult.optString("status") == "success") {
+                        return "Sent."
+                    }
+                    if (name == "phone_control" && toolResult.optString("status") == "success") {
+                        return "Done."
+                    }
+                    if (name == "swipe_screen" && toolResult.optString("status") == "success") {
+                        return "Done."
+                    }
                     break
                 }
             }
@@ -109,6 +110,6 @@ RULES:
             }
         }
 
-        return "Completed."
+        return "Done."
     }
 }
