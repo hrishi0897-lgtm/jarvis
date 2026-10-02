@@ -40,6 +40,7 @@ class BackgroundVoiceService : Service(), RecognitionListener, TextToSpeech.OnIn
 
     private var windowManager: WindowManager? = null
     private var indicatorView: TextView? = null
+    private var consecutiveErrors = 0
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -66,6 +67,7 @@ class BackgroundVoiceService : Service(), RecognitionListener, TextToSpeech.OnIn
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        consecutiveErrors = 0
         startListening()
         return START_NOT_STICKY
     }
@@ -123,6 +125,14 @@ class BackgroundVoiceService : Service(), RecognitionListener, TextToSpeech.OnIn
         val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
         val text = matches?.firstOrNull()?.trim() ?: ""
 
+        if (text.equals("stop", ignoreCase = true) ||
+            text.equals("bye", ignoreCase = true) ||
+            text.equals("close", ignoreCase = true)) {
+            stopSelf()
+            return
+        }
+
+        consecutiveErrors = 0
         if (text.isNotBlank()) {
             showIndicator("Jarvis thinking...")
             serviceScope.launch {
@@ -141,7 +151,8 @@ class BackgroundVoiceService : Service(), RecognitionListener, TextToSpeech.OnIn
                 }
             }
         } else {
-            stopSelf()
+            consecutiveErrors++
+            if (consecutiveErrors >= 2) stopSelf() else startListening()
         }
     }
 
@@ -152,7 +163,7 @@ class BackgroundVoiceService : Service(), RecognitionListener, TextToSpeech.OnIn
             }
             tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, "BG_JARVIS")
         } else {
-            stopSelf()
+            startListening()
         }
     }
 
@@ -163,16 +174,28 @@ class BackgroundVoiceService : Service(), RecognitionListener, TextToSpeech.OnIn
             tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {}
                 override fun onDone(utteranceId: String?) {
-                    serviceScope.launch { stopSelf() }
+                    serviceScope.launch {
+                        startListening()
+                    }
                 }
                 override fun onError(utteranceId: String?) {
-                    serviceScope.launch { stopSelf() }
+                    serviceScope.launch {
+                        startListening()
+                    }
                 }
             })
         }
     }
 
-    override fun onError(error: Int) { stopSelf() }
+    override fun onError(error: Int) {
+        consecutiveErrors++
+        if (consecutiveErrors >= 2) {
+            stopSelf()
+        } else {
+            startListening()
+        }
+    }
+
     override fun onReadyForSpeech(params: Bundle?) {}
     override fun onBeginningOfSpeech() {}
     override fun onRmsChanged(rmsdB: Float) {}
