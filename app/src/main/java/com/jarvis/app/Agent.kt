@@ -26,6 +26,11 @@ CRITICAL SPEED INSTRUCTIONS:
         userMessage: String,
         onUpdate: (String) -> Unit
     ): String {
+        // Prevent history bloat safely: reset if conversation gets excessively long
+        if (conversationHistory.size > 20) {
+            conversationHistory.clear()
+        }
+
         conversationHistory.add(JSONObject().apply {
             put("role", "user")
             put("parts", JSONArray().apply {
@@ -38,9 +43,7 @@ CRITICAL SPEED INSTRUCTIONS:
             turns++
 
             val contentsArray = JSONArray()
-            // Keep conversation concise to reduce token upload latency
-            val recentHistory = conversationHistory.takeLast(8)
-            for (msg in recentHistory) {
+            for (msg in conversationHistory) {
                 contentsArray.put(msg)
             }
 
@@ -83,15 +86,21 @@ CRITICAL SPEED INSTRUCTIONS:
                         })
                     })
 
-                    // If a direct navigation or typing action completed, return immediately without another round-trip
+                    // Close the turn cleanly with a synthetic model reply so history remains balanced
                     if (name == "type_and_send" && toolResult.optString("status") == "success") {
-                        return "Sent."
+                        val reply = "Sent."
+                        appendSyntheticModelReply(conversationHistory, reply)
+                        return reply
                     }
                     if (name == "phone_control" && toolResult.optString("status") == "success") {
-                        return "Done."
+                        val reply = "Done."
+                        appendSyntheticModelReply(conversationHistory, reply)
+                        return reply
                     }
                     if (name == "swipe_screen" && toolResult.optString("status") == "success") {
-                        return "Done."
+                        val reply = "Done."
+                        appendSyntheticModelReply(conversationHistory, reply)
+                        return reply
                     }
                     break
                 }
@@ -110,6 +119,17 @@ CRITICAL SPEED INSTRUCTIONS:
             }
         }
 
-        return "Done."
+        val fallback = "Done."
+        appendSyntheticModelReply(conversationHistory, fallback)
+        return fallback
+    }
+
+    private fun appendSyntheticModelReply(history: MutableList<JSONObject>, text: String) {
+        history.add(JSONObject().apply {
+            put("role", "model")
+            put("parts", JSONArray().apply {
+                put(JSONObject().apply { put("text", text) })
+            })
+        })
     }
 }
