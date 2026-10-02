@@ -32,7 +32,7 @@ object OverlayConfirmationManager {
                 val dm = context.resources.displayMetrics
                 val dp = dm.density
 
-                val layoutParams = WindowManager.LayoutParams(
+                val windowLayoutParams = WindowManager.LayoutParams(
                     (dm.widthPixels * 0.90f).toInt(),
                     WindowManager.LayoutParams.WRAP_CONTENT,
                     WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
@@ -54,7 +54,7 @@ object OverlayConfirmationManager {
                 }
 
                 val title = TextView(context).apply {
-                    text = "Confirm Critical Action"
+                    text = "Confirm Action"
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 19f)
                     setTypeface(null, Typeface.BOLD)
                     setTextColor(Color.parseColor("#1A1A1A"))
@@ -97,15 +97,14 @@ object OverlayConfirmationManager {
                     setOnClickListener { finish(false) }
                 }
 
-                val spacer = View(context).apply {
-                    layoutParams = LinearLayout.LayoutParams((12 * dp).toInt(), 1)
-                }
+                val spacer = View(context)
+                val spacerParams = LinearLayout.LayoutParams((12 * dp).toInt(), 1)
 
                 val btnAllow = Button(context).apply {
                     text = "Allow"
                     setTextColor(Color.WHITE)
                     background = GradientDrawable().apply {
-                        setColor(Color.parseColor("#D32F2F")) // Red alert color for destructive action
+                        setColor(Color.parseColor("#D32F2F"))
                         cornerRadius = 14 * dp
                     }
                     setPadding((24 * dp).toInt(), (10 * dp).toInt(), (24 * dp).toInt(), (10 * dp).toInt())
@@ -113,7 +112,7 @@ object OverlayConfirmationManager {
                 }
 
                 buttonRow.addView(btnDeny)
-                buttonRow.addView(spacer)
+                buttonRow.addView(spacer, spacerParams)
                 buttonRow.addView(btnAllow)
 
                 card.addView(title)
@@ -123,7 +122,7 @@ object OverlayConfirmationManager {
                 continuation.invokeOnCancellation { finish(false) }
 
                 try {
-                    windowManager.addView(card, layoutParams)
+                    windowManager.addView(card, windowLayoutParams)
                 } catch (e: Exception) {
                     if (continuation.isActive) continuation.resume(false)
                 }
