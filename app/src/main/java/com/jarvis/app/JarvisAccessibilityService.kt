@@ -35,6 +35,14 @@ class JarvisAccessibilityService : AccessibilityService() {
     }
 
     private fun getTargetAppRoot(allowedPackages: Set<String>): AccessibilityNodeInfo? {
+        val active = rootInActiveWindow
+        if (active != null) {
+            val pkg = active.packageName?.toString() ?: ""
+            if (pkg != packageName && (allowedPackages.isEmpty() || allowedPackages.contains(pkg))) {
+                return active
+            }
+        }
+
         val allWindows = try { windows } catch (_: Exception) { null }
         if (!allWindows.isNullOrEmpty()) {
             for (w in allWindows) {
@@ -47,13 +55,7 @@ class JarvisAccessibilityService : AccessibilityService() {
                 }
             }
         }
-
-        val active = rootInActiveWindow ?: return null
-        val activePkg = active.packageName?.toString() ?: ""
-        if (activePkg != packageName && (allowedPackages.isEmpty() || allowedPackages.contains(activePkg))) {
-            return active
-        }
-        return null
+        return active
     }
 
     fun getScreenContent(allowedPackages: Set<String>): JSONObject {
@@ -135,12 +137,12 @@ class JarvisAccessibilityService : AccessibilityService() {
 
         when (direction.lowercase()) {
             "down" -> {
-                startY = height * 0.75f
-                endY = height * 0.25f
+                startY = height * 0.70f
+                endY = height * 0.30f
             }
             "up" -> {
-                startY = height * 0.25f
-                endY = height * 0.75f
+                startY = height * 0.30f
+                endY = height * 0.70f
             }
             "left" -> {
                 startX = width * 0.85f
@@ -159,7 +161,7 @@ class JarvisAccessibilityService : AccessibilityService() {
         }
 
         val gesture = GestureDescription.Builder()
-            .addStroke(GestureDescription.StrokeDescription(path, 0, 320))
+            .addStroke(GestureDescription.StrokeDescription(path, 0, 200))
             .build()
 
         return dispatchGesture(gesture, null, null)
@@ -167,7 +169,6 @@ class JarvisAccessibilityService : AccessibilityService() {
 
     fun typeAndSend(text: String, allowedPackages: Set<String>, autoSend: Boolean = true): Boolean {
         val root = getTargetAppRoot(allowedPackages) ?: return false
-
         val inputNode = findEditableNode(root) ?: return false
 
         val args = Bundle().apply {
@@ -178,10 +179,8 @@ class JarvisAccessibilityService : AccessibilityService() {
 
         if (!autoSend) return true
 
-        try { Thread.sleep(250) } catch (_: Exception) {}
-
-        val updatedRoot = getTargetAppRoot(allowedPackages) ?: root
-        val sendBtn = findSendButton(updatedRoot)
+        // Directly find and tap the send button immediately
+        val sendBtn = findSendButton(root)
         if (sendBtn != null) {
             if (sendBtn.isClickable && sendBtn.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
                 return true
@@ -274,7 +273,7 @@ class JarvisAccessibilityService : AccessibilityService() {
     fun tapCoordinates(x: Float, y: Float): Boolean {
         val path = Path().apply { moveTo(x, y) }
         val gesture = GestureDescription.Builder()
-            .addStroke(GestureDescription.StrokeDescription(path, 0, 70))
+            .addStroke(GestureDescription.StrokeDescription(path, 0, 50))
             .build()
         return dispatchGesture(gesture, null, null)
     }
