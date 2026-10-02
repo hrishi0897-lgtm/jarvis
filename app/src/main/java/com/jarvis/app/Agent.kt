@@ -17,7 +17,8 @@ Follow these guidelines strictly:
 3. To open an app or navigate, always use 'open_app'. DO NOT run Termux commands (like am start) to open normal apps.
 4. To interact with elements on screen, use 'read_screen' first to see visible options, then call 'click_element' or 'input_text_element'.
 5. If a button, chat item, contact, or field is not visible in 'read_screen', call 'scroll_screen' with direction 'down' or 'up', then call 'read_screen' again to locate it.
-6. Only use 'run_termux_command' when the user explicitly requests command line, scripts, or system shell utilities.
+6. To return to a previous screen, dismiss popups/dialogs, or exit video players/views, call 'go_back'.
+7. Only use 'run_termux_command' when the user explicitly requests command line, scripts, or system shell utilities.
 """
     }
 
@@ -69,10 +70,8 @@ Follow these guidelines strictly:
 
                     val toolResult = tools.execute(name, args)
 
-                    // Retain the entire untouched model content to preserve thought_signatures
                     conversationHistory.add(modelContent)
 
-                    // Add function response turn under role "user"
                     conversationHistory.add(JSONObject().apply {
                         put("role", "user")
                         put("parts", JSONArray().apply {
