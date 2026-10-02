@@ -1,14 +1,15 @@
 package com.jarvis.app
 
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -17,13 +18,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import kotlin.coroutines.resume
 
 data class ChatMessage(val sender: String, val text: String)
 
@@ -46,8 +44,6 @@ class MainActivity : ComponentActivity() {
     private lateinit var agent: Agent
 
     private val conversationHistory = mutableListOf<JSONObject>()
-    private var confirmContinuation: ((Boolean) -> Unit)? = null
-    private var showConfirmationState by mutableStateOf<String?>(null)
 
     companion object {
         val SUPPORTED_MODELS = listOf(
@@ -73,18 +69,7 @@ class MainActivity : ComponentActivity() {
         )
 
         val confirmHandler: suspend (String) -> Boolean = { details ->
-            if (!hasWindowFocus()) {
-                OverlayConfirmationManager.requestConfirmation(applicationContext, details)
-            } else {
-                suspendCancellableCoroutine<Boolean> { continuation: CancellableContinuation<Boolean> ->
-                    confirmContinuation = { allowed: Boolean ->
-                        if (continuation.isActive) {
-                            continuation.resume(allowed)
-                        }
-                    }
-                    showConfirmationState = details
-                }
-            }
+            OverlayConfirmationManager.requestConfirmation(applicationContext, details)
         }
 
         val termuxBridge = TermuxBridge(
@@ -110,7 +95,7 @@ class MainActivity : ComponentActivity() {
     @Composable
     fun JarvisMainScreen() {
         var selectedTab by remember { mutableIntStateOf(0) }
-        val tabs = listOf("Chat", "Apps", "Settings")
+        val tabs = listOf("Chat", "Voice", "Apps", "Settings")
 
         MaterialTheme {
             Scaffold(
@@ -130,37 +115,47 @@ class MainActivity : ComponentActivity() {
                 Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
                     when (selectedTab) {
                         0 -> ChatTabScreen()
-                        1 -> AppsTabScreen()
-                        2 -> SettingsTabScreen()
-                    }
-
-                    showConfirmationState?.let { details ->
-                        AlertDialog(
-                            onDismissRequest = {
-                                confirmContinuation?.invoke(false)
-                                showConfirmationState = null
-                            },
-                            title = { Text("Confirm Action") },
-                            text = { Text(details) },
-                            confirmButton = {
-                                TextButton(onClick = {
-                                    confirmContinuation?.invoke(true)
-                                    showConfirmationState = null
-                                }) {
-                                    Text("Allow")
-                                }
-                            },
-                            dismissButton = {
-                                TextButton(onClick = {
-                                    confirmContinuation?.invoke(false)
-                                    showConfirmationState = null
-                                }) {
-                                    Text("Deny")
-                                }
-                            }
-                        )
+                        1 -> InAppVoiceTabScreen()
+                        2 -> AppsTabScreen()
+                        3 -> SettingsTabScreen()
                     }
                 }
+            }
+        }
+    }
+
+    @Composable
+    fun InAppVoiceTabScreen() {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Surface(
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .size(140.dp)
+                        .clickable {
+                            val intent = Intent(this@MainActivity, BackgroundVoiceService::class.java)
+                            startService(intent)
+                        }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("🎙️", fontSize = 42.sp)
+                    }
+                }
+                Spacer(modifier = Modifier.height(20.dp))
+                Text(
+                    text = "Tap to talk to Jarvis",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Text(
+                    text = "Jarvis will run directly without taking over your screen.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.Gray,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
             }
         }
     }
