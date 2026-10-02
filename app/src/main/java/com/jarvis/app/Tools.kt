@@ -33,8 +33,30 @@ class Tools(
         })
 
         toolsArray.put(JSONObject().apply {
+            put("name", "send_whatsapp_message")
+            put("description", "Opens WhatsApp, finds a contact or chat by name, opens the chat, types the message, and sends it automatically.")
+            put("parameters", JSONObject().apply {
+                put("type", "object")
+                put("properties", JSONObject().apply {
+                    put("recipient", JSONObject().apply {
+                        put("type", "string")
+                        put("description", "The contact or group name in WhatsApp.")
+                    })
+                    put("message", JSONObject().apply {
+                        put("type", "string")
+                        put("description", "The message text to send.")
+                    })
+                })
+                put("required", JSONArray().apply {
+                    put("recipient")
+                    put("message")
+                })
+            })
+        })
+
+        toolsArray.put(JSONObject().apply {
             put("name", "type_and_send")
-            put("description", "Types text directly into the active messaging input box on screen and sends it. Use whenever the user asks to type, write, or send a message.")
+            put("description", "Types text directly into the active chat composer on screen and sends it. Use whenever the user is already inside a chat and says 'type X' or 'send X'.")
             put("parameters", JSONObject().apply {
                 put("type", "object")
                 put("properties", JSONObject().apply {
@@ -107,7 +129,7 @@ class Tools(
 
         toolsArray.put(JSONObject().apply {
             put("name", "click_element")
-            put("description", "Taps on a visible element by label, description, or id.")
+            put("description", "Taps on a visible element or bottom navigation tab (e.g., 'Search', 'Home', 'Library') by label or id.")
             put("parameters", JSONObject().apply {
                 put("type", "object")
                 put("properties", JSONObject().apply {
@@ -214,6 +236,20 @@ class Tools(
                     result.put("date", dateFormat)
                     result.put("time", timeFormat)
                     result.put("battery_percent", batteryPct)
+                }
+
+                "send_whatsapp_message" -> {
+                    val recipient = args.getString("recipient")
+                    val msg = args.getString("message")
+                    val service = JarvisAccessibilityService.instance
+                    if (service == null) {
+                        result.put("status", "error")
+                        result.put("message", "Jarvis Accessibility Service is not active.")
+                    } else {
+                        val ok = service.sendWhatsAppMessage(recipient, msg, prefsManager.getAllowedPackages())
+                        result.put("status", if (ok) "success" else "error")
+                        result.put("message", if (ok) "Sent message to $recipient." else "Could not complete message to $recipient.")
+                    }
                 }
 
                 "type_and_send" -> {
