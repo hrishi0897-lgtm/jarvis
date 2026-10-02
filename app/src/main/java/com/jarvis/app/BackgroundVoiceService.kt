@@ -33,6 +33,7 @@ class BackgroundVoiceService : Service(), RecognitionListener, TextToSpeech.OnIn
     private var tts: TextToSpeech? = null
     private var isTtsReady = false
     private var isProcessing = false
+    private var consecutiveSilences = 0
 
     private lateinit var prefsManager: PreferencesManager
     private lateinit var geminiClient: GeminiClient
@@ -67,6 +68,7 @@ class BackgroundVoiceService : Service(), RecognitionListener, TextToSpeech.OnIn
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        consecutiveSilences = 0
         if (!isProcessing) {
             startListening()
         }
@@ -127,9 +129,15 @@ class BackgroundVoiceService : Service(), RecognitionListener, TextToSpeech.OnIn
         val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
         val text = matches?.firstOrNull()?.trim() ?: ""
 
+        if (text.equals("stop", ignoreCase = true) || text.equals("bye", ignoreCase = true) || text.equals("exit", ignoreCase = true)) {
+            stopSelf()
+            return
+        }
+
         if (text.isNotBlank() && !isProcessing) {
+            consecutiveSilences = 0
             isProcessing = true
-            showIndicator("Thinking...")
+            showIndicator("Working...")
             serviceScope.launch {
                 try {
                     val reply = agent.runTurn(
@@ -138,7 +146,7 @@ class BackgroundVoiceService : Service(), RecognitionListener, TextToSpeech.OnIn
                         onUpdate = { status -> showIndicator(status) }
                     )
                     showIndicator(reply)
-                    speakAndFinish(reply)
+                    speak(reply)
                 } catch (e: Exception) {
                     val err = if (e.message?.contains("429") == true) {
                         "Rate limit reached. Please wait a minute."
@@ -146,22 +154,28 @@ class BackgroundVoiceService : Service(), RecognitionListener, TextToSpeech.OnIn
                         "Error: ${e.message}"
                     }
                     showIndicator(err)
-                    speakAndFinish(err)
+                    speak(err)
                 }
             }
         } else {
-            stopSelf()
+            consecutiveSilences++
+            if (consecutiveSilences >= 2) {
+                stopSelf()
+            } else {
+                startListening()
+            }
         }
     }
 
-    private fun speakAndFinish(text: String) {
+    private fun speak(text: String) {
         if (isTtsReady && tts != null) {
             val params = Bundle().apply {
                 putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "VOICE_REPLY")
             }
             tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, "VOICE_REPLY")
         } else {
-            stopSelf()
+            isProcessing = false
+            startListening()
         }
     }
 
@@ -173,12 +187,14 @@ class BackgroundVoiceService : Service(), RecognitionListener, TextToSpeech.OnIn
                 override fun onStart(utteranceId: String?) {}
                 override fun onDone(utteranceId: String?) {
                     serviceScope.launch {
-                        stopSelf()
+                        isProcessing = false
+                        startListening()
                     }
                 }
                 override fun onError(utteranceId: String?) {
                     serviceScope.launch {
-                        stopSelf()
+                        isProcessing = false
+                        startListening()
                     }
                 }
             })
@@ -186,7 +202,14 @@ class BackgroundVoiceService : Service(), RecognitionListener, TextToSpeech.OnIn
     }
 
     override fun onError(error: Int) {
-        stopSelf()
+        if (!isProcessing) {
+            consecutiveSilences++
+            if (consecutiveSilences >= 2) {
+                stopSelf()
+            } else {
+                startListening()
+            }
+        }
     }
 
     override fun onReadyForSpeech(params: Bundle?) {}
