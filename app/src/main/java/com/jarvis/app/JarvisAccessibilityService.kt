@@ -241,4 +241,69 @@ class JarvisAccessibilityService : AccessibilityService() {
         }
         return null
     }
+    fun typeAndSend(text: String, allowedPackages: Set<String>, autoSend: Boolean = true): Boolean {
+    val root = getTargetAppRoot(allowedPackages) ?: return false
+
+    // 1. Locate the editable input field on screen directly
+    val inputNode = findEditableNode(root) ?: return false
+
+    // 2. Set the text
+    val args = Bundle().apply {
+        putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+    }
+    val textSet = inputNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+    if (!textSet) return false
+
+    if (!autoSend) return true
+
+    // 3. Brief pause to allow the WhatsApp send button to swap from the Mic icon
+    try { Thread.sleep(250) } catch (_: Exception) {}
+
+    // 4. Tap the send button (contentDescription 'Send' or common send view IDs)
+    val updatedRoot = getTargetAppRoot(allowedPackages) ?: root
+    val sendButton = findSendButton(updatedRoot)
+    if (sendButton != null) {
+        if (sendButton.isClickable && sendButton.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+            return true
+        }
+        val bounds = Rect()
+        sendButton.getBoundsInScreen(bounds)
+        if (!bounds.isEmpty) {
+            return tapCoordinates(bounds.exactCenterX(), bounds.exactCenterY())
+        }
+    }
+
+    return true
+}
+
+private fun findEditableNode(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+    if (node == null) return null
+    if (node.isEditable) return node
+
+    for (i in 0 until node.childCount) {
+        val found = findEditableNode(node.getChild(i))
+        if (found != null) return found
+    }
+    return null
+}
+
+private fun findSendButton(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+    if (node == null) return null
+    val desc = node.contentDescription?.toString() ?: ""
+    val id = node.viewIdResourceName ?: ""
+
+    if (desc.equals("Send", ignoreCase = true) || 
+        desc.contains("send", ignoreCase = true) || 
+        id.endsWith("send_btn") || 
+        id.endsWith("send")) {
+        return node
+    }
+
+    for (i in 0 until node.childCount) {
+        val found = findSendButton(node.getChild(i))
+        if (found != null) return found
+    }
+    return null
+}
+
 }
