@@ -32,6 +32,7 @@ class BackgroundVoiceService : Service(), RecognitionListener, TextToSpeech.OnIn
     private var speechRecognizer: SpeechRecognizer? = null
     private var tts: TextToSpeech? = null
     private var isTtsReady = false
+    private var isProcessing = false
 
     private lateinit var prefsManager: PreferencesManager
     private lateinit var geminiClient: GeminiClient
@@ -40,7 +41,6 @@ class BackgroundVoiceService : Service(), RecognitionListener, TextToSpeech.OnIn
 
     private var windowManager: WindowManager? = null
     private var indicatorView: TextView? = null
-    private var consecutiveErrors = 0
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -67,8 +67,9 @@ class BackgroundVoiceService : Service(), RecognitionListener, TextToSpeech.OnIn
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        consecutiveErrors = 0
-        startListening()
+        if (!isProcessing) {
+            startListening()
+        }
         return START_NOT_STICKY
     }
 
@@ -116,6 +117,7 @@ class BackgroundVoiceService : Service(), RecognitionListener, TextToSpeech.OnIn
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
         }
         speechRecognizer?.startListening(intent)
         showIndicator("Listening...")
@@ -125,16 +127,9 @@ class BackgroundVoiceService : Service(), RecognitionListener, TextToSpeech.OnIn
         val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
         val text = matches?.firstOrNull()?.trim() ?: ""
 
-        if (text.equals("stop", ignoreCase = true) ||
-            text.equals("bye", ignoreCase = true) ||
-            text.equals("close", ignoreCase = true)) {
-            stopSelf()
-            return
-        }
-
-        consecutiveErrors = 0
-        if (text.isNotBlank()) {
-            showIndicator("Jarvis thinking...")
+        if (text.isNotBlank() && !isProcessing) {
+            isProcessing = true
+            showIndicator("Thinking...")
             serviceScope.launch {
                 try {
                     val reply = agent.runTurn(
@@ -143,27 +138,30 @@ class BackgroundVoiceService : Service(), RecognitionListener, TextToSpeech.OnIn
                         onUpdate = { status -> showIndicator(status) }
                     )
                     showIndicator(reply)
-                    speak(reply)
+                    speakAndFinish(reply)
                 } catch (e: Exception) {
-                    val err = "Error: ${e.message}"
+                    val err = if (e.message?.contains("429") == true) {
+                        "Rate limit reached. Please wait a minute."
+                    } else {
+                        "Error: ${e.message}"
+                    }
                     showIndicator(err)
-                    speak(err)
+                    speakAndFinish(err)
                 }
             }
         } else {
-            consecutiveErrors++
-            if (consecutiveErrors >= 2) stopSelf() else startListening()
+            stopSelf()
         }
     }
 
-    private fun speak(text: String) {
+    private fun speakAndFinish(text: String) {
         if (isTtsReady && tts != null) {
             val params = Bundle().apply {
-                putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "BG_JARVIS")
+                putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "VOICE_REPLY")
             }
-            tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, "BG_JARVIS")
+            tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, "VOICE_REPLY")
         } else {
-            startListening()
+            stopSelf()
         }
     }
 
@@ -175,12 +173,12 @@ class BackgroundVoiceService : Service(), RecognitionListener, TextToSpeech.OnIn
                 override fun onStart(utteranceId: String?) {}
                 override fun onDone(utteranceId: String?) {
                     serviceScope.launch {
-                        startListening()
+                        stopSelf()
                     }
                 }
                 override fun onError(utteranceId: String?) {
                     serviceScope.launch {
-                        startListening()
+                        stopSelf()
                     }
                 }
             })
@@ -188,12 +186,7 @@ class BackgroundVoiceService : Service(), RecognitionListener, TextToSpeech.OnIn
     }
 
     override fun onError(error: Int) {
-        consecutiveErrors++
-        if (consecutiveErrors >= 2) {
-            stopSelf()
-        } else {
-            startListening()
-        }
+        stopSelf()
     }
 
     override fun onReadyForSpeech(params: Bundle?) {}
