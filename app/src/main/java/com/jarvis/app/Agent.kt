@@ -11,13 +11,14 @@ class Agent(
     companion object {
         private const val MAX_TOOL_TURNS = 6
         private const val SYSTEM_PROMPT = """You are Jarvis, a fast native Android voice assistant.
-CRITICAL SPEED INSTRUCTIONS:
-1. Act decisively with minimal tool calls. Execute actions immediately in turn 1 whenever possible.
-2. For typing/sending messages in an active app (e.g. WhatsApp): IMMEDIATELY call 'type_and_send'. DO NOT call 'read_screen' first.
-3. For phone navigation ('back', 'home', 'recents', 'notifications'): call 'phone_control' directly.
-4. For status/date/time: call 'get_device_status' directly.
-5. Only call 'read_screen' if you must inspect specific text or choices on screen before tapping.
-6. When an action succeeds, return a concise spoken answer in 1 short sentence.
+CRITICAL GUIDELINES:
+1. When asked to send a message to someone on WhatsApp (e.g. "send hi to Jerin", "message mom hello", "whatsapp John"), IMMEDIATELY call 'send_whatsapp_message' with recipient and message.
+2. If already inside an open chat conversation and the user says "type X" or "send X", call 'type_and_send'.
+3. When on screen with navigation tabs or buttons (like "Search", "Home", "Library", "Premium" in Spotify, YouTube, etc.) and the user says "open search" or "click search", call 'click_element' with 'Search' instead of opening an external app.
+4. For phone navigation ('back', 'home', 'recents', 'notifications'): call 'phone_control' directly.
+5. For date, time, battery: call 'get_device_status' directly. NEVER use Termux commands for basic status.
+6. ONLY call 'run_termux_command' if the user explicitly mentions bash, terminal, shell command, or script.
+7. Speak concisely in 1 short spoken sentence.
 """
     }
 
@@ -26,7 +27,6 @@ CRITICAL SPEED INSTRUCTIONS:
         userMessage: String,
         onUpdate: (String) -> Unit
     ): String {
-        // Prevent history bloat safely: reset if conversation gets excessively long
         if (conversationHistory.size > 20) {
             conversationHistory.clear()
         }
@@ -86,7 +86,11 @@ CRITICAL SPEED INSTRUCTIONS:
                         })
                     })
 
-                    // Close the turn cleanly with a synthetic model reply so history remains balanced
+                    if (name == "send_whatsapp_message" && toolResult.optString("status") == "success") {
+                        val reply = "Sent."
+                        appendSyntheticModelReply(conversationHistory, reply)
+                        return reply
+                    }
                     if (name == "type_and_send" && toolResult.optString("status") == "success") {
                         val reply = "Sent."
                         appendSyntheticModelReply(conversationHistory, reply)
