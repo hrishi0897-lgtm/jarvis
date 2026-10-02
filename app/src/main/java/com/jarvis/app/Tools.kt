@@ -33,6 +33,25 @@ class Tools(
         })
 
         toolsArray.put(JSONObject().apply {
+            put("name", "type_and_send")
+            put("description", "Types text directly into the active messaging input box on screen and sends it. Use whenever the user asks to type, write, or send a message.")
+            put("parameters", JSONObject().apply {
+                put("type", "object")
+                put("properties", JSONObject().apply {
+                    put("text", JSONObject().apply {
+                        put("type", "string")
+                        put("description", "The message text to type and send.")
+                    })
+                    put("send_immediately", JSONObject().apply {
+                        put("type", "boolean")
+                        put("description", "Whether to automatically tap Send. Defaults to true.")
+                    })
+                })
+                put("required", JSONArray().apply { put("text") })
+            })
+        })
+
+        toolsArray.put(JSONObject().apply {
             put("name", "open_app")
             put("description", "Opens an application by its package name or label.")
             put("parameters", JSONObject().apply {
@@ -103,7 +122,7 @@ class Tools(
 
         toolsArray.put(JSONObject().apply {
             put("name", "input_text_element")
-            put("description", "Types text into an active input field.")
+            put("description", "Types text into a specific identified input field.")
             put("parameters", JSONObject().apply {
                 put("type", "object")
                 put("properties", JSONObject().apply {
@@ -195,6 +214,20 @@ class Tools(
                     result.put("date", dateFormat)
                     result.put("time", timeFormat)
                     result.put("battery_percent", batteryPct)
+                }
+
+                "type_and_send" -> {
+                    val msgText = args.getString("text")
+                    val sendImmediately = args.optBoolean("send_immediately", true)
+                    val service = JarvisAccessibilityService.instance
+                    if (service == null) {
+                        result.put("status", "error")
+                        result.put("message", "Jarvis Accessibility Service is not active.")
+                    } else {
+                        val ok = service.typeAndSend(msgText, prefsManager.getAllowedPackages(), sendImmediately)
+                        result.put("status", if (ok) "success" else "error")
+                        result.put("message", if (ok) "Typed message into input field." else "Could not find active text input box on screen.")
+                    }
                 }
 
                 "phone_control" -> {
