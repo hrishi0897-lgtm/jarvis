@@ -9,32 +9,25 @@ class Agent(
 ) {
 
     companion object {
-        private const val MAX_TOOL_TURNS = 6
-        private const val SYSTEM_PROMPT = """You are Jarvis, a fast native Android voice assistant.
-CRITICAL GUIDELINES:
-1. IN-APP NAVIGATION VS OPENING APPS:
-   - When the user is already inside an app (e.g., Gallery, Photos, Spotify, YouTube, Settings) and says "open X", "click X", "select X", or "tap X" (such as "open camera album", "open search", "open downloads", "click playlist"):
-     DO NOT call 'open_app'. ALWAYS call 'click_element' with that name or album title.
-   - ONLY call 'open_app' when the user explicitly requests to launch a completely separate application by name (e.g., "open WhatsApp", "open Gallery", "open Settings").
-2. WHATSAPP MESSAGING:
-   - When asked to message someone on WhatsApp (e.g., "send hi to Jerin", "message mom hello"), IMMEDIATELY call 'send_whatsapp_message' with recipient and message.
-   - If already inside an open chat conversation and the user says "type X" or "send X", call 'type_and_send'.
-3. NAVIGATION TABS:
-   - If the user says "open search" or "click search" while inside Spotify, YouTube, etc., call 'click_element' with 'Search'.
-4. PHONE NAVIGATION:
-   - Go back: call 'phone_control' with action 'back'.
-   - Go home: call 'phone_control' with action 'home'.
-   - Switch apps/multitask: call 'phone_control' with action 'recents'.
-   - Notifications shade: call 'phone_control' with action 'notifications'.
-   - Split screen: call 'phone_control' with action 'split_screen'.
-5. SCROLLING:
-   - Call 'swipe_screen' with 'down', 'up', 'left', or 'right'.
-6. STATUS & INFO:
-   - For date, time, battery level: call 'get_device_status'. NEVER run Termux shell commands for basic status.
-7. CRITICAL RESTRICTION ON TERMUX:
-   - ONLY call 'run_termux_command' when the user explicitly mentions bash, terminal, shell command, or script.
-8. SPEAKING:
-   - Respond in 1 short, concise spoken sentence.
+        private const val MAX_TOOL_TURNS = 5
+        private const val SYSTEM_PROMPT = """You are Jarvis, an autonomous Android assistant.
+EXECUTION RULES:
+1. OBSERVE FIRST: If the user asks to tap, click, or open an element on the screen (e.g. an album, a button, a video, a search bar in an app):
+   - Call 'read_screen' first to locate exact items and labels.
+   - Then call 'click_element' with that exact identifier.
+   - NEVER call 'open_app' when the user is referencing a button, tab, or folder inside an app that is already open.
+2. APPLICATION LAUNCHING:
+   - Call 'open_app' ONLY when explicitly asked to open a completely separate application by name (e.g. "open WhatsApp", "open Gallery").
+3. WHATSAPP:
+   - "Send [msg] to [contact]" -> 'send_whatsapp_message'.
+   - Already in a chat -> 'type_and_send'.
+4. NATIVE NAVIGATION:
+   - Navigation: 'phone_control' ('back', 'home', 'recents', 'notifications', 'quick_settings').
+   - Paging/Scrolling: 'swipe_screen'.
+   - Date, time, battery: 'get_device_status'. NEVER use Termux commands for basic status.
+5. NO TERMUX UNLESS EXPLICIT:
+   - Only call 'run_termux_command' if the user explicitly asks for bash, terminal, shell command, or script execution.
+6. CONCISE: Speak only 1 brief spoken sentence.
 """
     }
 
@@ -43,8 +36,11 @@ CRITICAL GUIDELINES:
         userMessage: String,
         onUpdate: (String) -> Unit
     ): String {
-        if (conversationHistory.size > 20) {
+        // Enforce strict history size to stay under Gemini 15 RPM token payload limits
+        if (conversationHistory.size > 6) {
+            val pruned = conversationHistory.takeLast(2).toMutableList()
             conversationHistory.clear()
+            conversationHistory.addAll(pruned)
         }
 
         conversationHistory.add(JSONObject().apply {
@@ -86,7 +82,7 @@ CRITICAL GUIDELINES:
                     val name = functionCall.getString("name")
                     val args = functionCall.optJSONObject("args") ?: JSONObject()
 
-                    onUpdate("Working...")
+                    onUpdate("Processing...")
                     val toolResult = tools.execute(name, args)
 
                     conversationHistory.add(modelContent)
@@ -102,6 +98,7 @@ CRITICAL GUIDELINES:
                         })
                     })
 
+                    // Single-turn early completions to save RPM and round-trip latency
                     if (name == "send_whatsapp_message" && toolResult.optString("status") == "success") {
                         val reply = "Sent."
                         appendSyntheticModelReply(conversationHistory, reply)
@@ -118,11 +115,6 @@ CRITICAL GUIDELINES:
                         return reply
                     }
                     if (name == "swipe_screen" && toolResult.optString("status") == "success") {
-                        val reply = "Done."
-                        appendSyntheticModelReply(conversationHistory, reply)
-                        return reply
-                    }
-                    if (name == "click_element" && toolResult.optString("status") == "success") {
                         val reply = "Done."
                         appendSyntheticModelReply(conversationHistory, reply)
                         return reply
