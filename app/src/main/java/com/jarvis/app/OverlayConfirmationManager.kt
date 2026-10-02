@@ -1,14 +1,18 @@
 package com.jarvis.app
 
 import android.content.Context
+import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.provider.Settings
+import android.util.TypedValue
 import android.view.Gravity
-import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
 import android.widget.Button
+import android.widget.LinearLayout
 import android.widget.TextView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -18,7 +22,6 @@ import kotlin.coroutines.resume
 object OverlayConfirmationManager {
 
     suspend fun requestConfirmation(context: Context, promptText: String): Boolean {
-        // Fallback if overlay permission is not granted
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(context)) {
             return false
         }
@@ -26,83 +29,103 @@ object OverlayConfirmationManager {
         return withContext(Dispatchers.Main) {
             suspendCancellableCoroutine { continuation ->
                 val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                val dm = context.resources.displayMetrics
+                val dp = dm.density
 
                 val layoutParams = WindowManager.LayoutParams(
-                    WindowManager.LayoutParams.MATCH_PARENT,
+                    (dm.widthPixels * 0.90f).toInt(),
                     WindowManager.LayoutParams.WRAP_CONTENT,
                     WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_DIM_BEHIND,
                     PixelFormat.TRANSLUCENT
                 ).apply {
                     gravity = Gravity.CENTER
+                    dimAmount = 0.55f
                 }
 
-                // Inflate or construct simple card
-                val cardView = View.inflate(context, android.R.layout.simple_list_item_2, null) // Simple fallback or custom layout
-                val container = android.widget.LinearLayout(context).apply {
-                    orientation = android.widget.LinearLayout.VERTICAL
-                    setPadding(48, 48, 48, 48)
-                    setBackgroundColor(0xF0FFFFFF.toInt())
-                    elevation = 20f
+                val card = LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding((24 * dp).toInt(), (24 * dp).toInt(), (24 * dp).toInt(), (20 * dp).toInt())
+                    background = GradientDrawable().apply {
+                        setColor(Color.WHITE)
+                        cornerRadius = 24 * dp
+                    }
+                    elevation = 30 * dp
                 }
 
                 val title = TextView(context).apply {
-                    text = "Jarvis Confirmation"
-                    textSize = 18f
-                    setTypeface(null, android.graphics.Typeface.BOLD)
-                    setTextColor(0xFF1E1E1E.toInt())
+                    text = "Confirm Critical Action"
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 19f)
+                    setTypeface(null, Typeface.BOLD)
+                    setTextColor(Color.parseColor("#1A1A1A"))
                 }
 
                 val message = TextView(context).apply {
                     text = promptText
-                    textSize = 14f
-                    setTextColor(0xFF424242.toInt())
-                    setPadding(0, 16, 0, 24)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+                    setTextColor(Color.parseColor("#4A4A4A"))
+                    setPadding(0, (14 * dp).toInt(), 0, (24 * dp).toInt())
+                    setLineSpacing(6f, 1f)
                 }
 
-                val buttonRow = android.widget.LinearLayout(context).apply {
-                    orientation = android.widget.LinearLayout.HORIZONTAL
+                val buttonRow = LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.END
                 }
 
                 var isDismissed = false
-                fun cleanup(result: Boolean) {
+                fun finish(allowed: Boolean) {
                     if (!isDismissed) {
                         isDismissed = true
                         try {
-                            windowManager.removeView(container)
+                            windowManager.removeView(card)
                         } catch (_: Exception) {}
                         if (continuation.isActive) {
-                            continuation.resume(result)
+                            continuation.resume(allowed)
                         }
                     }
                 }
 
                 val btnDeny = Button(context).apply {
                     text = "Deny"
-                    setOnClickListener { cleanup(false) }
+                    setTextColor(Color.parseColor("#5A626A"))
+                    background = GradientDrawable().apply {
+                        setColor(Color.parseColor("#F1F3F5"))
+                        cornerRadius = 14 * dp
+                    }
+                    setPadding((20 * dp).toInt(), (10 * dp).toInt(), (20 * dp).toInt(), (10 * dp).toInt())
+                    setOnClickListener { finish(false) }
+                }
+
+                val spacer = View(context).apply {
+                    layoutParams = LinearLayout.LayoutParams((12 * dp).toInt(), 1)
                 }
 
                 val btnAllow = Button(context).apply {
                     text = "Allow"
-                    setOnClickListener { cleanup(true) }
+                    setTextColor(Color.WHITE)
+                    background = GradientDrawable().apply {
+                        setColor(Color.parseColor("#D32F2F")) // Red alert color for destructive action
+                        cornerRadius = 14 * dp
+                    }
+                    setPadding((24 * dp).toInt(), (10 * dp).toInt(), (24 * dp).toInt(), (10 * dp).toInt())
+                    setOnClickListener { finish(true) }
                 }
 
                 buttonRow.addView(btnDeny)
+                buttonRow.addView(spacer)
                 buttonRow.addView(btnAllow)
 
-                container.addView(title)
-                container.addView(message)
-                container.addView(buttonRow)
+                card.addView(title)
+                card.addView(message)
+                card.addView(buttonRow)
 
-                continuation.invokeOnCancellation {
-                    cleanup(false)
-                }
+                continuation.invokeOnCancellation { finish(false) }
 
                 try {
-                    windowManager.addView(container, layoutParams)
+                    windowManager.addView(card, layoutParams)
                 } catch (e: Exception) {
-                    continuation.resume(false)
+                    if (continuation.isActive) continuation.resume(false)
                 }
             }
         }
