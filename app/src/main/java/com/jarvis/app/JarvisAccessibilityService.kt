@@ -319,43 +319,25 @@ class JarvisAccessibilityService : AccessibilityService() {
         val root = getTargetAppRoot(allowedPackages) ?: return false
         val target = findNode(root, identifier) ?: return false
 
-        var bestContainer: AccessibilityNodeInfo? = null
-        var p = target.parent
-        val metrics = resources.displayMetrics
-        val screenWidth = metrics.widthPixels
+        // 1. Direct click on node if clickable
+        if (target.isClickable && target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+            return true
+        }
 
+        // 2. Climb up parent hierarchy to find clickable wrapper (cards, tiles, list items)
+        var p = target.parent
         while (p != null) {
-            val pBounds = Rect()
-            p.getBoundsInScreen(pBounds)
-            if (pBounds.width() > screenWidth * 0.5f) {
-                bestContainer = p
-                break
+            if (p.isClickable && p.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                return true
             }
             p = p.parent
         }
 
-        if (bestContainer != null && bestContainer.isClickable && bestContainer.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-            return true
-        }
-
+        // 3. Fallback: Dispatch exact coordinate tap on the center of the element bounds
         val targetBounds = Rect()
         target.getBoundsInScreen(targetBounds)
-        if (target.isClickable && targetBounds.width() > 100 && target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-            return true
-        }
-
-        val clickBounds = if (bestContainer != null) {
-            val b = Rect()
-            bestContainer.getBoundsInScreen(b)
-            b
-        } else {
-            targetBounds
-        }
-
-        if (!clickBounds.isEmpty) {
-            val tapX = (clickBounds.left + clickBounds.width() * 0.60f).coerceIn(clickBounds.left.toFloat(), clickBounds.right.toFloat())
-            val tapY = clickBounds.exactCenterY()
-            return tapCoordinates(tapX, tapY)
+        if (!targetBounds.isEmpty) {
+            return tapCoordinates(targetBounds.exactCenterX(), targetBounds.exactCenterY())
         }
 
         return false
