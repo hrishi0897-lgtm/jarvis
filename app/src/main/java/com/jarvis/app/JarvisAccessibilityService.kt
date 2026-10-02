@@ -2,6 +2,7 @@ package com.jarvis.app
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
+import android.content.Intent
 import android.graphics.Path
 import android.graphics.Rect
 import android.os.Bundle
@@ -169,7 +170,7 @@ class JarvisAccessibilityService : AccessibilityService() {
 
     fun typeAndSend(text: String, allowedPackages: Set<String>, autoSend: Boolean = true): Boolean {
         val root = getTargetAppRoot(allowedPackages) ?: return false
-        val inputNode = findEditableNode(root) ?: return false
+        val inputNode = findChatComposer(root) ?: findEditableNode(root) ?: return false
 
         val args = Bundle().apply {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
@@ -179,7 +180,6 @@ class JarvisAccessibilityService : AccessibilityService() {
 
         if (!autoSend) return true
 
-        // Directly find and tap the send button immediately
         val sendBtn = findSendButton(root)
         if (sendBtn != null) {
             if (sendBtn.isClickable && sendBtn.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
@@ -192,6 +192,97 @@ class JarvisAccessibilityService : AccessibilityService() {
             }
         }
         return true
+    }
+
+    fun sendWhatsAppMessage(recipient: String, messageText: String, allowedPackages: Set<String>): Boolean {
+        val pm = packageManager
+        val launchIntent = pm.getLaunchIntentForPackage("com.whatsapp") ?: return false
+        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        startActivity(launchIntent)
+
+        var root: AccessibilityNodeInfo? = null
+        for (attempt in 0..6) {
+            try { Thread.sleep(250) } catch (_: Exception) {}
+            root = getTargetAppRoot(allowedPackages)
+            if (root?.packageName?.toString() == "com.whatsapp") break
+        }
+        if (root == null) return false
+
+        val contactNode = findNode(root, recipient)
+        if (contactNode != null) {
+            clickElement(recipient, allowedPackages)
+        } else {
+            val searchNode = findNode(root, "Search") ?: findEditableNode(root)
+            if (searchNode != null) {
+                if (searchNode.isEditable) {
+                    val args = Bundle().apply {
+                        putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, recipient)
+                    }
+                    searchNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                } else {
+                    searchNode.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    try { Thread.sleep(300) } catch (_: Exception) {}
+                    val updatedRoot = getTargetAppRoot(allowedPackages)
+                    val editable = findEditableNode(updatedRoot)
+                    val args = Bundle().apply {
+                        putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, recipient)
+                    }
+                    editable?.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                }
+
+                try { Thread.sleep(600) } catch (_: Exception) {}
+                val resultsRoot = getTargetAppRoot(allowedPackages)
+                val resultContact = findNode(resultsRoot, recipient)
+                if (resultContact != null) {
+                    clickElement(recipient, allowedPackages)
+                } else {
+                    return false
+                }
+            }
+        }
+
+        try { Thread.sleep(500) } catch (_: Exception) {}
+        val chatRoot = getTargetAppRoot(allowedPackages) ?: return false
+
+        val composer = findChatComposer(chatRoot) ?: findEditableNode(chatRoot) ?: return false
+        val textArgs = Bundle().apply {
+            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, messageText)
+        }
+        composer.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, textArgs)
+
+        try { Thread.sleep(200) } catch (_: Exception) {}
+        val sendBtn = findSendButton(getTargetAppRoot(allowedPackages) ?: chatRoot)
+        if (sendBtn != null) {
+            if (sendBtn.isClickable && sendBtn.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                return true
+            }
+            val bounds = Rect()
+            sendBtn.getBoundsInScreen(bounds)
+            if (!bounds.isEmpty) {
+                return tapCoordinates(bounds.exactCenterX(), bounds.exactCenterY())
+            }
+        }
+
+        return true
+    }
+
+    private fun findChatComposer(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+        if (node == null) return null
+        val text = node.text?.toString() ?: ""
+        val desc = node.contentDescription?.toString() ?: ""
+        val id = node.viewIdResourceName ?: ""
+
+        if (node.isEditable && (text.contains("Message", ignoreCase = true) || 
+            desc.contains("Message", ignoreCase = true) || 
+            id.endsWith("entry"))) {
+            return node
+        }
+
+        for (i in 0 until node.childCount) {
+            val found = findChatComposer(node.getChild(i))
+            if (found != null) return found
+        }
+        return null
     }
 
     private fun findEditableNode(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
