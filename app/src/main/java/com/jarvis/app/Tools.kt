@@ -143,6 +143,15 @@ class Tools(
             })
         }
 
+        val goBack = JSONObject().apply {
+            put("name", "go_back")
+            put("description", "Navigates back to the previous screen or exits full-screen views using the Android system Back action.")
+            put("parameters", JSONObject().apply {
+                put("type", "object")
+                put("properties", JSONObject())
+            })
+        }
+
         val clickElem = JSONObject().apply {
             put("name", "click_element")
             put("description", "Clicks a button or interactive UI element in the active allowed app by its text, description, or resource ID.")
@@ -188,6 +197,7 @@ class Tools(
         toolsArray.put(replyNotification)
         toolsArray.put(readScreen)
         toolsArray.put(scrollScreen)
+        toolsArray.put(goBack)
         toolsArray.put(clickElem)
         toolsArray.put(inputTextElem)
 
@@ -351,6 +361,18 @@ class Tools(
                         val success = service.scrollScreen(direction, prefsManager.getAllowedPackages())
                         result.put("status", if (success) "success" else "error")
                         result.put("message", if (success) "Scrolled $direction." else "Unable to scroll on the current screen.")
+                    }
+                }
+
+                "go_back" -> {
+                    val service = JarvisAccessibilityService.instance
+                    if (service == null) {
+                        result.put("status", "error")
+                        result.put("message", "Jarvis Automation Service is not enabled.")
+                    } else {
+                        val success = service.pressBack()
+                        result.put("status", if (success) "success" else "error")
+                        result.put("message", if (success) "Navigated back." else "Failed to trigger back navigation.")
                     }
                 }
 
