@@ -41,7 +41,7 @@ class JarvisAccessibilityService : AccessibilityService() {
                 if (w.type == AccessibilityWindowInfo.TYPE_APPLICATION) {
                     val root = w.root ?: continue
                     val pkg = root.packageName?.toString() ?: ""
-                    if (pkg != packageName && allowedPackages.contains(pkg)) {
+                    if (pkg != packageName && (allowedPackages.isEmpty() || allowedPackages.contains(pkg))) {
                         return root
                     }
                 }
@@ -50,7 +50,7 @@ class JarvisAccessibilityService : AccessibilityService() {
 
         val active = rootInActiveWindow ?: return null
         val activePkg = active.packageName?.toString() ?: ""
-        if (activePkg != packageName && allowedPackages.contains(activePkg)) {
+        if (activePkg != packageName && (allowedPackages.isEmpty() || allowedPackages.contains(activePkg))) {
             return active
         }
         return null
@@ -59,7 +59,7 @@ class JarvisAccessibilityService : AccessibilityService() {
     fun getScreenContent(allowedPackages: Set<String>): JSONObject {
         val root = getTargetAppRoot(allowedPackages) ?: return JSONObject().apply {
             put("status", "error")
-            put("message", "No allowed background or foreground application window found. Ensure the target app is running and enabled in Apps tab.")
+            put("message", "No foreground window found.")
         }
 
         val currentPackage = root.packageName?.toString() ?: ""
@@ -103,62 +103,60 @@ class JarvisAccessibilityService : AccessibilityService() {
         }
     }
 
-    fun scrollScreen(direction: String, allowedPackages: Set<String>): Boolean {
-        val root = getTargetAppRoot(allowedPackages) ?: return false
-
-        val scrollableNode = findScrollableNode(root)
-        if (scrollableNode != null) {
-            val action = if (direction.equals("down", ignoreCase = true)) {
-                AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
-            } else {
-                AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
-            }
-            if (scrollableNode.performAction(action)) {
-                return true
-            }
+    fun triggerGlobalAction(actionName: String): Boolean {
+        return when (actionName.lowercase()) {
+            "back" -> performGlobalAction(GLOBAL_ACTION_BACK)
+            "home" -> performGlobalAction(GLOBAL_ACTION_HOME)
+            "recents" -> performGlobalAction(GLOBAL_ACTION_RECENTS)
+            "notifications" -> performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
+            "quick_settings" -> performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS)
+            "split_screen" -> performGlobalAction(GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN)
+            else -> false
         }
+    }
 
+    fun swipe(direction: String): Boolean {
         val metrics: DisplayMetrics = resources.displayMetrics
         val width = metrics.widthPixels.toFloat()
         val height = metrics.heightPixels.toFloat()
         val centerX = width / 2f
+        val centerY = height / 2f
 
-        val startY: Float
-        val endY: Float
+        var startX = centerX
+        var startY = centerY
+        var endX = centerX
+        var endY = centerY
 
-        if (direction.equals("down", ignoreCase = true)) {
-            startY = height * 0.75f
-            endY = height * 0.25f
-        } else {
-            startY = height * 0.25f
-            endY = height * 0.75f
+        when (direction.lowercase()) {
+            "down" -> { // Swipe up to scroll down
+                startY = height * 0.75f
+                endY = height * 0.25f
+            }
+            "up" -> { // Swipe down to scroll up
+                startY = height * 0.25f
+                endY = height * 0.75f
+            }
+            "left" -> { // Swipe right to left (next page)
+                startX = width * 0.85f
+                endX = width * 0.15f
+            }
+            "right" -> { // Swipe left to right (previous page)
+                startX = width * 0.15f
+                endX = width * 0.85f
+            }
+            else -> return false
         }
 
         val path = Path().apply {
-            moveTo(centerX, startY)
-            lineTo(centerX, endY)
+            moveTo(startX, startY)
+            lineTo(endX, endY)
         }
 
         val gesture = GestureDescription.Builder()
-            .addStroke(GestureDescription.StrokeDescription(path, 0, 300))
+            .addStroke(GestureDescription.StrokeDescription(path, 0, 320))
             .build()
 
         return dispatchGesture(gesture, null, null)
-    }
-
-    private fun findScrollableNode(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
-        if (node == null) return null
-        if (node.isScrollable) return node
-
-        for (i in 0 until node.childCount) {
-            val found = findScrollableNode(node.getChild(i))
-            if (found != null) return found
-        }
-        return null
-    }
-
-    fun pressBack(): Boolean {
-        return performGlobalAction(GLOBAL_ACTION_BACK)
     }
 
     fun clickElement(identifier: String, allowedPackages: Set<String>): Boolean {
@@ -201,17 +199,18 @@ class JarvisAccessibilityService : AccessibilityService() {
         if (!clickBounds.isEmpty) {
             val tapX = (clickBounds.left + clickBounds.width() * 0.60f).coerceIn(clickBounds.left.toFloat(), clickBounds.right.toFloat())
             val tapY = clickBounds.exactCenterY()
-
-            val clickPath = Path().apply {
-                moveTo(tapX, tapY)
-            }
-            val gesture = GestureDescription.Builder()
-                .addStroke(GestureDescription.StrokeDescription(clickPath, 0, 80))
-                .build()
-            return dispatchGesture(gesture, null, null)
+            return tapCoordinates(tapX, tapY)
         }
 
         return false
+    }
+
+    fun tapCoordinates(x: Float, y: Float): Boolean {
+        val path = Path().apply { moveTo(x, y) }
+        val gesture = GestureDescription.Builder()
+            .addStroke(GestureDescription.StrokeDescription(path, 0, 70))
+            .build()
+        return dispatchGesture(gesture, null, null)
     }
 
     fun inputText(identifier: String, text: String, allowedPackages: Set<String>): Boolean {
