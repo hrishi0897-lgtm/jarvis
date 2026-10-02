@@ -157,11 +157,14 @@ class JarvisAccessibilityService : AccessibilityService() {
         return null
     }
 
+    fun pressBack(): Boolean {
+        return performGlobalAction(GLOBAL_ACTION_BACK)
+    }
+
     fun clickElement(identifier: String, allowedPackages: Set<String>): Boolean {
         val root = getTargetAppRoot(allowedPackages) ?: return false
         val target = findNode(root, identifier) ?: return false
 
-        // Look upward for the widest row container to avoid clicking profile picture icons
         var bestContainer: AccessibilityNodeInfo? = null
         var p = target.parent
         val metrics = resources.displayMetrics
@@ -170,7 +173,6 @@ class JarvisAccessibilityService : AccessibilityService() {
         while (p != null) {
             val pBounds = Rect()
             p.getBoundsInScreen(pBounds)
-            // If parent spans more than half the screen width, it's the full chat item row
             if (pBounds.width() > screenWidth * 0.5f) {
                 bestContainer = p
                 break
@@ -178,19 +180,16 @@ class JarvisAccessibilityService : AccessibilityService() {
             p = p.parent
         }
 
-        // Attempt 1: Standard accessibility click on the full row
         if (bestContainer != null && bestContainer.isClickable && bestContainer.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
             return true
         }
 
-        // Attempt 2: Target clickable itself (provided it's not a tiny icon)
         val targetBounds = Rect()
         target.getBoundsInScreen(targetBounds)
         if (target.isClickable && targetBounds.width() > 100 && target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
             return true
         }
 
-        // Attempt 3: Precision gesture click towards the text body (center-right of the row)
         val clickBounds = if (bestContainer != null) {
             val b = Rect()
             bestContainer.getBoundsInScreen(b)
@@ -200,7 +199,6 @@ class JarvisAccessibilityService : AccessibilityService() {
         }
 
         if (!clickBounds.isEmpty) {
-            // Tap at 60% of the row width to avoid the profile picture on the far left
             val tapX = (clickBounds.left + clickBounds.width() * 0.60f).coerceIn(clickBounds.left.toFloat(), clickBounds.right.toFloat())
             val tapY = clickBounds.exactCenterY()
 
@@ -232,7 +230,6 @@ class JarvisAccessibilityService : AccessibilityService() {
         val desc = root.contentDescription?.toString() ?: ""
         val id = root.viewIdResourceName ?: ""
 
-        // Prioritize actual user-visible contact name or title text first
         if (text.contains(query, ignoreCase = true) ||
             desc.contains(query, ignoreCase = true) ||
             id.contains(query, ignoreCase = true)) {
