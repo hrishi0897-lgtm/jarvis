@@ -469,20 +469,30 @@ class JarvisAccessibilityService : AccessibilityService() {
     private fun normalize(str: String): String =
         str.lowercase().replace(Regex("[^\\p{L}\\p{Nd}]"), "")
 
+    private val PHOTO_WORDS = Regex("photo|picture|avatar|profile", RegexOption.IGNORE_CASE)
+
     private fun scoreNode(n: AccessibilityNodeInfo, query: String, nq: String): Int {
+        val rawDesc = n.contentDescription?.toString().orEmpty()
         val text = normalize(n.text?.toString().orEmpty())
-        val desc = normalize(n.contentDescription?.toString().orEmpty())
+        val desc = normalize(rawDesc)
         val id = n.viewIdResourceName.orEmpty()
         var s = 0
+        var textMatch = false
 
         if (nq.isNotEmpty()) {
-            if (text == nq || desc == nq) s = 100
-            else if (text.contains(nq) || desc.contains(nq)) s = 50
+            if (text == nq) { s = 115; textMatch = true }
+            else if (desc == nq) s = 100
+            else if (text.contains(nq)) { s = 65; textMatch = true }
+            else if (desc.contains(nq)) s = 50
         }
         if (id.isNotEmpty()) {
             if (id.equals(query, true) || id.endsWith("/$query", true)) s = maxOf(s, 90)
             else if (query.length >= 4 && id.contains(query, true)) s = maxOf(s, 30)
         }
+
+        val photoish = PHOTO_WORDS.containsMatchIn(rawDesc) || PHOTO_WORDS.containsMatchIn(id)
+        if (photoish && !PHOTO_WORDS.containsMatchIn(query) && !textMatch) return 0
+
         if (s > 0) {
             s += if (n.isVisibleToUser) 10 else -40
             if (n.isClickable) s += 5
