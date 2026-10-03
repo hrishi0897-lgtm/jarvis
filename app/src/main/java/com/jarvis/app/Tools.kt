@@ -11,7 +11,12 @@ import android.os.BatteryManager
 import android.provider.AlarmClock
 import android.provider.Settings
 import android.view.KeyEvent
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -30,6 +35,10 @@ class Tools(
     companion object {
         private const val SETTLE_MS = 700L
         private const val APPROVAL_WINDOW_MS = 45_000L
+
+        // Shared by every Tools instance so "stop" works from any screen.
+        private val scrollScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        @Volatile private var scrollJob: Job? = null
     }
 
     @Volatile
@@ -121,6 +130,14 @@ class Tools(
 
         t.put(fn("dial_number", "Opens the dialer with a number filled in. The user (or a tap on the Call button) places the call.",
             listOf(Triple("number", "string", "Phone number.")), listOf("number")))
+
+        t.put(fn("auto_scroll", "Keeps swiping to the next video in a feed (YouTube Shorts, Reels, TikTok) every N seconds in the background. Android cannot tell when a video ends, so N should match the video length. Open the feed app first.",
+            listOf(
+                Triple("seconds_per_video", "integer", "Seconds to watch each video before swiping. Default 30."),
+                Triple("max_videos", "integer", "Stop after this many videos. Default 20.")
+            )))
+
+        t.put(fn("stop_auto_scroll", "Stops auto_scroll."))
 
         t.put(fn("wait", "Waits for a screen to load (1-5 seconds).",
             listOf(Triple("seconds", "integer", "Seconds to wait.")), listOf("seconds")))
@@ -481,6 +498,46 @@ class Tools(
                         result.put("message", "Dialer opened with $number.")
                         if (svc != null) attachScreen(result, svc, allowed, 400L)
                     }
+                }
+
+                "auto_scroll" -> {
+                    val seconds = args.optInt("seconds_per_video", 30).coerceIn(5, 180)
+                    val videos = args.optInt("max_videos", 20).coerceIn(1, 100)
+                    if (svc == null) {
+                        noService(result)
+                    } else {
+                        val startPkg = svc.foregroundPackage()
+                        if (startPkg.isEmpty() || startPkg == context.packageName) {
+                            result.put("status", "error")
+                            result.put("message", "Open the app with the feed first (for example YouTube), then start auto scroll.")
+                        } else if (SafetyGuard.isBlockedPackage(startPkg) || !allowed.contains(startPkg)) {
+                            result.put("status", "error")
+                            result.put("message", "That app is not allowed or is blocked.")
+                        } else {
+                            scrollJob?.cancel()
+                            scrollJob = scrollScope.launch {
+                                var done = 0
+                                while (isActive && done < videos) {
+                                    delay(seconds * 1000L)
+                                    val s = JarvisAccessibilityService.instance ?: break
+                                    val fg = s.foregroundPackage()
+                                    if (fg == context.packageName) continue
+                                    if (fg != startPkg) break
+                                    s.swipe("down")
+                                    done++
+                                }
+                            }
+                            result.put("status", "success")
+                            result.put("message", "Auto scroll started: next video every $seconds s, up to $videos videos. Say stop to end it.")
+                        }
+                    }
+                }
+
+                "stop_auto_scroll" -> {
+                    scrollJob?.cancel()
+                    scrollJob = null
+                    result.put("status", "success")
+                    result.put("message", "Auto scroll stopped.")
                 }
 
                 "wait" -> {

@@ -86,6 +86,8 @@ class JarvisAccessibilityService : AccessibilityService() {
     // Screen perception
     // ---------------------------------------------------------------------------------------
 
+    fun foregroundPackage(): String = rootInActiveWindow?.packageName?.toString().orEmpty()
+
     fun getScreenContent(allowed: Set<String>): JSONObject {
         val root = getTargetAppRoot(allowed) ?: return JSONObject().apply {
             put("status", "error")
