@@ -21,6 +21,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.platform.LocalContext
 
 data class ChatMessage(val sender: String, val text: String)
 
@@ -60,6 +63,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        JarvisLogger.init(this)
 
         prefsManager = PreferencesManager(applicationContext)
         geminiClient = GeminiClient(
@@ -94,7 +98,7 @@ class MainActivity : ComponentActivity() {
     @Composable
     fun JarvisMainScreen() {
         var selectedTab by remember { mutableIntStateOf(0) }
-        val tabs = listOf("Chat", "Voice", "Apps", "Settings")
+        val tabs = listOf("Chat", "Voice", "Apps", "Settings", "Logs")
 
         MaterialTheme {
             Scaffold(
@@ -117,6 +121,7 @@ class MainActivity : ComponentActivity() {
                         1 -> InAppVoiceTabScreen()
                         2 -> AppsTabScreen()
                         3 -> SettingsTabScreen()
+                        4 -> LogsTabScreen()
                     }
                 }
             }
@@ -303,8 +308,8 @@ class MainActivity : ComponentActivity() {
     fun SettingsTabScreen() {
         var apiKey by remember { mutableStateOf(prefsManager.getApiKey()) }
         var selectedModelId by remember { mutableStateOf(prefsManager.getModelName()) }
-        var expanded by remember { mutableStateOf(false) }
         var isSaved by remember { mutableStateOf(false) }
+        var expanded by remember { mutableStateOf(false) }
 
         val currentLabel = SUPPORTED_MODELS.firstOrNull { it.modelId == selectedModelId }?.label
             ?: selectedModelId
@@ -378,4 +383,54 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+
+    @Composable
+    fun LogsTabScreen() {
+        val ctx = LocalContext.current
+        var text by remember { mutableStateOf(JarvisLogger.dump()) }
+
+        Column(
+            modifier = Modifier.fillMaxSize().padding(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Trace (last request)", style = MaterialTheme.typography.titleMedium,
+                     modifier = Modifier.weight(1f))
+                TextButton(onClick = { text = JarvisLogger.dump() }) { Text("Refresh") }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(onClick = {
+                    val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                            as android.content.ClipboardManager
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("JarvisTrace", text))
+                }) { Text("Copy all") }
+                TextButton(onClick = { JarvisLogger.clear(); text = JarvisLogger.dump() }) {
+                    Text("Clear")
+                }
+            }
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.surfaceVariant
+            ) {
+                val scroll = rememberScrollState()
+                Box(modifier = Modifier.fillMaxSize()
+                        .verticalScroll(scroll)
+                        .padding(8.dp))
+                {
+                    Text(
+                        text = text,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                    )
+                }
+            }
+        }
+    }
+
 }

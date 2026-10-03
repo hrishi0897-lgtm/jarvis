@@ -41,6 +41,8 @@ STYLE
     ): String {
         // Single-session memory: each request starts clean so function turns never go unlinked.
         conversationHistory.clear()
+        JarvisLogger.clear()
+        tools.resetStepCounter()
         conversationHistory.add(JSONObject().apply {
             put("role", "user")
             put("parts", JSONArray().apply {

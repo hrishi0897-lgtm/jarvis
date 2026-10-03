@@ -86,6 +86,7 @@ class VoiceActivity : ComponentActivity(), RecognitionListener, TextToSpeech.OnI
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        JarvisLogger.init(this)
 
         prefsManager = PreferencesManager(applicationContext)
         geminiClient = GeminiClient(

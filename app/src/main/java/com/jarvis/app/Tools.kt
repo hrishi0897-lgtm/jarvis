@@ -44,6 +44,12 @@ class Tools(
     @Volatile
     private var destructiveApprovedUntil = 0L
 
+    /** Increments per tool call within a request. Reset by Agent at request start. */
+    @Volatile
+    private var stepCounter: Int = 0
+
+    fun resetStepCounter() { stepCounter = 0 }
+
     // ------------------------------------------------------------------------------------
     // Declarations
     // ------------------------------------------------------------------------------------
@@ -238,6 +244,8 @@ class Tools(
     // ------------------------------------------------------------------------------------
 
     suspend fun execute(name: String, args: JSONObject): JSONObject = withContext(Dispatchers.IO) {
+        stepCounter++
+        val __t0 = System.currentTimeMillis()
         val result = JSONObject()
         try {
             val allowed = prefsManager.getAllowedPackages()
@@ -586,6 +594,17 @@ class Tools(
         } catch (e: Exception) {
             result.put("status", "error")
             result.put("message", e.message ?: "Execution error")
+        }
+        run {
+            val __dur = System.currentTimeMillis() - __t0
+            JarvisLogger.toolCall(
+                step = stepCounter,
+                tool = name,
+                argsPreview = args.toString(),
+                status = result.optString("status", "?"),
+                messagePreview = result.optString("message", ""),
+                durationMs = __dur
+            )
         }
         result
     }
