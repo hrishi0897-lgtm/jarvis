@@ -1,6 +1,0 @@
-R_DEF: Internal format may change without notice
-local
-drawable ic_jarvis_tile
-string accessibility_service_desc
-string app_name
-xml accessibility_service_config
